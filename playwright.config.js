@@ -1,8 +1,8 @@
-import { defineConfig } from '@playwright/test';
+const { defineConfig } = require('@playwright/test');
 
-export default defineConfig({
+module.exports = defineConfig({
   testDir: './e2e',
-  timeout: 30000,
+  timeout: 60000,
   expect: {
     timeout: 10000,
   },

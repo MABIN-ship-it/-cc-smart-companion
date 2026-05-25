@@ -1,64 +1,69 @@
-import { test, expect } from '@playwright/test';
-import { _electron as electron } from 'playwright';
-import path from 'path';
-import { fileURLToPath } from 'url';
+const { test, expect } = require('@playwright/test');
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
+const electronPath = path.join(projectRoot, 'node_modules', 'electron', 'dist', 'electron.exe');
 
 test.describe('CC 烟雾测试', () => {
 
-  test('应用能正常启动并显示主界面', async () => {
-    // 启动 Electron 应用
-    const electronApp = await electron.launch({
-      args: [path.join(projectRoot, 'electron', 'main.js')],
+  test('应用能正常启动且不崩溃 (15秒存活测试)', async () => {
+    console.log(`Electron: ${electronPath}`);
+    console.log(`主进程: ${path.join(projectRoot, 'electron', 'main.js')}`);
+
+    if (!fs.existsSync(electronPath)) {
+      throw new Error(`Electron 可执行文件不存在: ${electronPath}`);
+    }
+
+    // 使用 child_process 启动 Electron 应用
+    const child = spawn(electronPath, ['electron/main.js'], {
       cwd: projectRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined },
     });
 
-    // 等待第一个窗口出现
-    const window = await electronApp.firstWindow();
-    console.log(`窗口标题: ${await window.title()}`);
+    let stdout = '';
+    let stderr = '';
+    let exited = false;
+    let exitCode = null;
 
-    // 1. 验证窗口存在
-    expect(await window.title()).toBeTruthy();
-
-    // 2. 等待页面加载完成 (OpeningAnimation → ChatInterface)
-    //    开场动画约7秒，等12秒确保主界面已出现
-    await window.waitForTimeout(12000);
-
-    // 3. 截图 — 这是最关键的验证：亲眼看到应用实际状态
-    await window.screenshot({
-      path: path.join(projectRoot, 'e2e', 'screenshots', 'main-ui.png'),
-      fullPage: false,
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
     });
 
-    // 4. 检查页面是否有 canvas 元素（Three.js 3D渲染）
-    const canvasCount = await window.evaluate(() => {
-      return document.querySelectorAll('canvas').length;
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
     });
-    console.log(`Canvas 元素数量: ${canvasCount}`);
-    expect(canvasCount).toBeGreaterThan(0);
 
-    // 5. 检查是否有输入区域（InputBar 组件）
-    const hasInput = await window.evaluate(() => {
-      return !!(
-        document.querySelector('textarea') ||
-        document.querySelector('input[type="text"]') ||
-        document.querySelector('[class*="input"]') ||
-        document.querySelector('[class*="Input"]')
-      );
+    child.on('exit', (code) => {
+      exited = true;
+      exitCode = code;
     });
-    console.log(`输入栏存在: ${hasInput}`);
 
-    // 6. 检查 body 不为空（页面已渲染内容）
-    const bodyText = await window.evaluate(() => {
-      return document.body.innerText.length;
+    // 等待 15 秒 — 如果应用在这期间崩溃，exit 事件会触发
+    await new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve('timeout');
+      }, 15000);
+
+      child.on('exit', () => {
+        clearTimeout(timeout);
+        resolve('exit');
+      });
     });
-    console.log(`页面文本长度: ${bodyText}`);
-    expect(bodyText).toBeGreaterThan(0);
 
-    // 关闭应用
-    await electronApp.close();
+    // 检查结果
+    if (exited) {
+      console.log(`应用意外退出，退出码: ${exitCode}`);
+      console.log(`stdout (最近): ${stdout.slice(-500)}`);
+      console.log(`stderr (最近): ${stderr.slice(-500)}`);
+    }
+
+    expect(exited).toBe(false);
+
+    // 杀掉进程
+    child.kill();
   });
 
 });

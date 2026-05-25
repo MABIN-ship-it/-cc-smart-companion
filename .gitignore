@@ -12,3 +12,4 @@ release/
 out/
 e2e/screenshots/
 e2e/results.json
+test-results/
