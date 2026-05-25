@@ -13,3 +13,7 @@ out/
 e2e/screenshots/
 e2e/results.json
 test-results/
+electron-test*.js
+electron_diag.txt
+update-and-run.bat
+delete-test*.js
