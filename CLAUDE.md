@@ -2,28 +2,30 @@
 
 ## 全自动工作流 — Claude Code 必须自主执行，用户不需要手动指导
 
-### 修改代码后（自动执行，不问用户）
+### 修改代码后（全自动，不问用户，不等人说"部署"）
 
-每当你编辑了一个或多个源文件，在回复用户之前，你必须：
+每当你编辑了一个或多个源文件，在回复用户之前，你必须完整执行：
 
 1. `cd D:/cc安装包/CC-App && npm test`
 2. `cd D:/cc安装包/CC-App && npm run build`
-3. `cd D:/cc安装包/CC-App && git add <修改的文件> && git commit -m "描述改动"`
-4. `cd D:/cc安装包/CC-App && git push`
+3. `cd D:/cc安装包/CC-App && npm run test:e2e`
+4. `cd D:/cc安装包/CC-App && git add <修改的文件> && git commit -m "描述改动"`
+5. `cd D:/cc安装包/CC-App && git push`
+6. 部署到 D:\cc安装包\1\：
+   ```
+   rm -rf D:/cc安装包/1/resources/app/dist/assets
+   cp -r dist/* D:/cc安装包/1/resources/app/dist/
+   cp electron/main.js D:/cc安装包/1/resources/app/electron/main.js
+   cp electron/preload.js D:/cc安装包/1/resources/app/electron/preload.js
+   ```
+7. 告诉用户：部署完成，请重启应用。
 
-**任何一步失败，必须向用户报告具体错误，不继续下一步。**
-
-### 部署到 D:\cc安装包\1\ 前（自动执行，不问用户）
-
-当用户要求部署或你认为需要部署时：
-1. `cd D:/cc安装包/CC-App && npm run verify` — 测试+构建+E2E三合一
-2. 如果通过，执行部署命令
-3. 如果任何一步失败，拒绝部署并报告失败原因
+**任何一步失败，停止并报告错误。禁止跳过任何一步。**
 
 ### 绝对不能做的事
 
-- **禁止说"已修复"但没有跑过 npm run verify（测试+构建+E2E）**
-- **禁止部署未经 verify 验证的代码**
+- **禁止在测试/构建/E2E/部署完成之前说"搞定了"**
+- **禁止修改代码后不完成全流程就回复用户**
 
 ---
 
