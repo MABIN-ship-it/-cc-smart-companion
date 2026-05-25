@@ -305,25 +305,27 @@ export default function ChatInterface() {
     }
   }, []);
 
-  // ─── 飞书监测引擎 ──────────────────────────────────────
+  // ─── 飞书WS状态监听（独立于连接状态，确保connecting阶段也能收到推送）───
+  useEffect(() => {
+    if (!window.electronAPI?.onFeishuStatusChange) return;
+    const unsub = window.electronAPI.onFeishuStatusChange((status) => {
+      if (status.event === 'ready' || status.event === 'reconnected') {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connected' });
+      } else if (status.event === 'reconnecting') {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connecting' });
+      } else if (status.event === 'error') {
+        if (!status.running) dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
+      }
+    });
+    return unsub;
+  }, []);
+
+  // ─── 飞书监测引擎（消息互通+任务检测+定时扫描） ──────
   useEffect(() => {
     if (state.feishuStatus !== 'connected') return;
 
     // 连接后向第一个联系人发送欢迎消息
     sendWelcomeMessage();
-
-    // 监听WS状态变更（断线/重连）
-    let unsubFeishuStatus = null;
-    if (window.electronAPI?.onFeishuStatusChange) {
-      unsubFeishuStatus = window.electronAPI.onFeishuStatusChange((status) => {
-        if (status.event === 'error' || status.event === 'reconnecting') {
-          dispatch({ type: 'SET_FEISHU_STATUS', payload: status.running ? 'connected' : 'connecting' });
-        }
-        if (status.event === 'reconnected' || status.event === 'ready') {
-          dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connected' });
-        }
-      });
-    }
 
     // 实时消息监听：主进程 WebSocket → IPC → 完整AI处理 → 自动回复飞书
     let unsubFeishuMsg = null;
@@ -383,7 +385,6 @@ export default function ChatInterface() {
     return () => {
       stopScheduledScan();
       if (unsubFeishuMsg) unsubFeishuMsg();
-      if (unsubFeishuStatus) unsubFeishuStatus();
     };
   }, [state.feishuStatus]);
 
