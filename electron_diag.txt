@@ -1,0 +1,7 @@
+process.versions.electron: 42.1.0
+process.versions.chrome: 148.0.7778.97
+process.resourcesPath: D:\cc安装包\CC-App\node_modules\electron\dist\resources
+Module._resolveFilename is native: false
+electron resolves to: D:\cc安装包\CC-App\node_modules\electron\index.js
+# builtinModules: 82
+electron in builtins: false

@@ -871,7 +871,7 @@ export default function ChatInterface() {
     setShowModelNameInput(false);
     setExtraHeaderInputs({});
     setShowCustomForm(false);
-    setCustomForm({ name: '', endpoint: '', modelName: '' });
+    setCustomForm({ name: '', endpoint: '', modelName: '', apiKey: '' });
     setShowApiModal(true);
   };
 
@@ -1207,9 +1207,7 @@ export default function ChatInterface() {
                           <span className="api-provider-register" onClick={e => {
                             e.stopPropagation();
                             window.electronAPI?.openExternal?.(m.registerUrl);
-                          }} title="注册获取API Key">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                          </span>
+                          }} title="注册获取API Key">注册</span>
                         )}
                         {m.isCustom && (
                           <span className="api-provider-delete" onClick={e => {
@@ -1255,24 +1253,46 @@ export default function ChatInterface() {
               />
             </div>
 
-            {/* Model name toggle */}
-            <div className="api-model-name-row">
-              <span className="api-model-name-label">
-                模型：{modelNameInput || getAvailableModels().find(m => m.id === selectedModel)?.modelName || selectedModel}
-              </span>
-              {!showModelNameInput ? (
-                <span className="api-model-name-toggle" onClick={() => setShowModelNameInput(true)}>+ 换模型</span>
-              ) : (
-                <input
-                  className="api-model-name-input"
-                  placeholder="输入实际模型名..."
-                  value={modelNameInput}
-                  onChange={e => setModelNameInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') setShowModelNameInput(false); }}
-                  autoFocus
-                />
-              )}
-            </div>
+            {/* Model selection */}
+            {(() => {
+              const selModel = getAvailableModels().find(m => m.id === selectedModel);
+              const options = selModel?.modelOptions || [];
+              const currentModelName = modelNameInput || selModel?.modelName || '';
+              return (
+                <div className="api-model-select-section">
+                  <label>选择模型</label>
+                  <div className="api-model-chips">
+                    {options.map(opt => (
+                      <span
+                        key={opt}
+                        className={`api-model-chip${currentModelName === opt ? ' active' : ''}`}
+                        onClick={() => {
+                          setModelNameInput(opt);
+                          setShowModelNameInput(false);
+                        }}
+                      >
+                        {opt}
+                      </span>
+                    ))}
+                    {!showModelNameInput ? (
+                      <span className="api-model-chip custom" onClick={() => setShowModelNameInput(true)}>
+                        + 自定义
+                      </span>
+                    ) : (
+                      <input
+                        className="api-model-name-input-inline"
+                        placeholder="输入模型名..."
+                        value={modelNameInput}
+                        onChange={e => setModelNameInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') setShowModelNameInput(false); }}
+                        onBlur={() => { if (!modelNameInput.trim()) setShowModelNameInput(false); }}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Baidu extra header (appid) */}
             {(() => {
@@ -1298,21 +1318,33 @@ export default function ChatInterface() {
               </span>
               {showCustomForm && (
                 <div className="api-modal-form">
-                  <input className="api-modal-input" placeholder="供应商名称" value={customForm.name}
+                  <input className="api-modal-input" placeholder="供应商名称（必填）" value={customForm.name}
                     onChange={e => setCustomForm(prev => ({ ...prev, name: e.target.value }))} />
-                  <input className="api-modal-input" placeholder="API端点URL" value={customForm.endpoint}
+                  <input className="api-modal-input" placeholder="API端点URL（必填）" value={customForm.endpoint}
                     onChange={e => setCustomForm(prev => ({ ...prev, endpoint: e.target.value }))} />
+                  <input className="api-modal-input" placeholder="API Key" type="password" value={customForm.apiKey || ''}
+                    onChange={e => setCustomForm(prev => ({ ...prev, apiKey: e.target.value }))} />
                   <input className="api-modal-input" placeholder="模型名（可选）" value={customForm.modelName}
                     onChange={e => setCustomForm(prev => ({ ...prev, modelName: e.target.value }))} />
-                  <button className="api-modal-btn confirm active" onClick={() => {
-                    if (!customForm.name.trim() || !customForm.endpoint.trim()) return;
-                    saveCustomProvider({ name: customForm.name.trim(), endpoint: customForm.endpoint.trim(), modelName: customForm.modelName.trim() });
-                    setSelectedModel(customForm.name.trim());
-                    setApiKeyInput('');
-                    setModelNameInput(customForm.modelName.trim());
-                    setShowCustomForm(false);
-                    setCustomForm({ name: '', endpoint: '', modelName: '' });
-                  }}>添加供应商</button>
+                  <div className="api-modal-form-actions">
+                    <button className="api-modal-btn cancel" onClick={() => setShowCustomForm(false)}>取消</button>
+                    <button className="api-modal-btn confirm active" onClick={() => {
+                      if (!customForm.name.trim() || !customForm.endpoint.trim()) return;
+                      saveCustomProvider({
+                        name: customForm.name.trim(),
+                        endpoint: customForm.endpoint.trim(),
+                        modelName: customForm.modelName.trim(),
+                      });
+                      if (customForm.apiKey?.trim()) {
+                        setApiKey(customForm.name.trim(), customForm.apiKey.trim());
+                      }
+                      setSelectedModel(customForm.name.trim());
+                      setApiKeyInput(customForm.apiKey?.trim() || '');
+                      setModelNameInput(customForm.modelName.trim());
+                      setShowCustomForm(false);
+                      setCustomForm({ name: '', endpoint: '', modelName: '', apiKey: '' });
+                    }}>添加</button>
+                  </div>
                 </div>
               )}
             </div>

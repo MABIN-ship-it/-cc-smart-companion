@@ -9,7 +9,9 @@
 const MODEL_REGISTRY = {
   // Anthropic Messages API 协议族
   'deepseek-chat': {
-    name: 'DeepSeek V3',
+    name: 'DeepSeek',
+    modelName: 'deepseek-chat',
+    modelOptions: ['deepseek-chat', 'deepseek-reasoner'],
     endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
     protocol: 'anthropic',
     defaultMaxTokens: 4096,
@@ -20,7 +22,9 @@ const MODEL_REGISTRY = {
   },
   // OpenAI Chat Completions API 协议族
   'gpt-4o': {
-    name: 'GPT-4o',
+    name: 'OpenAI',
+    modelName: 'gpt-4o',
+    modelOptions: ['gpt-4o', 'gpt-4.1', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o3-mini'],
     endpoint: 'https://api.openai.com/v1/chat/completions',
     protocol: 'openai',
     defaultMaxTokens: 4096,
@@ -38,6 +42,7 @@ const MODEL_REGISTRY = {
     apiKeyLabel: 'OpenAI API Key',
     registerUrl: 'https://platform.openai.com/api-keys',
     note: '',
+    hidden: true,
   },
   'gpt-4.1': {
     name: 'GPT-4.1',
@@ -48,9 +53,12 @@ const MODEL_REGISTRY = {
     apiKeyLabel: 'OpenAI API Key',
     registerUrl: 'https://platform.openai.com/api-keys',
     note: '',
+    hidden: true,
   },
   'qwen-plus': {
-    name: '通义千问 Plus',
+    name: '通义千问',
+    modelName: 'qwen-plus',
+    modelOptions: ['qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen-flash', 'qwen3-235b-a22b'],
     endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     protocol: 'openai',
     defaultMaxTokens: 4096,
@@ -60,7 +68,9 @@ const MODEL_REGISTRY = {
     note: '',
   },
   'glm-4': {
-    name: '智谱 GLM-4',
+    name: '智谱 GLM',
+    modelName: 'glm-4',
+    modelOptions: ['glm-4', 'glm-4-flash', 'glm-4-plus', 'glm-4v-plus'],
     endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
     protocol: 'openai',
     defaultMaxTokens: 4096,
@@ -70,20 +80,23 @@ const MODEL_REGISTRY = {
     note: '',
   },
   'doubao-pro': {
-    name: '豆包 Pro',
+    name: '豆包',
+    modelName: 'doubao-pro-256k',
+    modelOptions: ['doubao-pro-256k', 'doubao-lite-128k', 'doubao-pro-32k', 'doubao-vision-pro-32k'],
     endpoint: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
     protocol: 'openai',
     defaultMaxTokens: 4096,
-    contextWindow: 128000,
+    contextWindow: 256000,
     apiKeyLabel: '火山引擎 API Key',
     registerUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
     note: '',
   },
   'kimi': {
     name: 'Kimi',
+    modelName: 'kimi-k2.6',
+    modelOptions: ['kimi-k2.6', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
     endpoint: 'https://api.moonshot.cn/v1/chat/completions',
     protocol: 'openai',
-    modelName: 'kimi-k2.6',
     defaultMaxTokens: 4096,
     contextWindow: 256000,
     apiKeyLabel: 'Kimi API Key',
@@ -92,9 +105,10 @@ const MODEL_REGISTRY = {
   },
   'minimax': {
     name: 'MiniMax',
+    modelName: 'MiniMax-M2.7',
+    modelOptions: ['MiniMax-M2.7', 'MiniMax-Text-01', 'abab7-chat'],
     endpoint: 'https://api.minimax.chat/v1/text/chatcompletion_v2',
     protocol: 'openai',
-    modelName: 'MiniMax-M2.7',
     defaultMaxTokens: 4096,
     contextWindow: 245760,
     apiKeyLabel: 'MiniMax API Key',
@@ -103,9 +117,10 @@ const MODEL_REGISTRY = {
   },
   'stepfun': {
     name: '阶跃星辰',
+    modelName: 'step-3.5-flash',
+    modelOptions: ['step-3.5-flash', 'step-3-flash', 'step-2-16k', 'step-2v-16k'],
     endpoint: 'https://api.stepfun.com/v1/chat/completions',
     protocol: 'openai',
-    modelName: 'step-3.5-flash',
     defaultMaxTokens: 4096,
     contextWindow: 131072,
     apiKeyLabel: '阶跃 API Key',
@@ -114,9 +129,10 @@ const MODEL_REGISTRY = {
   },
   'mimo': {
     name: '小米 MiMo',
+    modelName: 'mimo-v2.5',
+    modelOptions: ['mimo-v2.5', 'mimo-v2.5-flash'],
     endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
     protocol: 'openai',
-    modelName: 'mimo-v2.5',
     defaultMaxTokens: 4096,
     contextWindow: 131072,
     apiKeyLabel: '小米MiMo API Key',
@@ -125,9 +141,10 @@ const MODEL_REGISTRY = {
   },
   'baidu-ernie': {
     name: '百度文心',
+    modelName: 'ernie-speed-128k',
+    modelOptions: ['ernie-speed-128k', 'ernie-speed-pro-128k', 'ernie-4.0-turbo-8k', 'ernie-4.5-8k', 'deepseek-v3', 'deepseek-r1'],
     endpoint: 'https://qianfan.baidubce.com/v2/chat/completions',
     protocol: 'openai',
-    modelName: 'ernie-speed-128k',
     defaultMaxTokens: 4096,
     contextWindow: 128000,
     apiKeyLabel: '百度千帆 API Key',
@@ -137,9 +154,10 @@ const MODEL_REGISTRY = {
   },
   'bailian': {
     name: '阿里百炼',
+    modelName: '',
+    modelOptions: ['qwen3-235b-a22b', 'qwen-max', 'qwen-plus', 'deepseek-v3', 'deepseek-r1'],
     endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
     protocol: 'openai',
-    modelName: '',
     defaultMaxTokens: 4096,
     contextWindow: 131072,
     apiKeyLabel: '阿里云 API Key',
@@ -148,9 +166,10 @@ const MODEL_REGISTRY = {
   },
   'hunyuan': {
     name: '腾讯混元',
+    modelName: '',
+    modelOptions: ['hunyuan-turbo', 'hunyuan-pro', 'hunyuan-standard', 'hunyuan-lite', 'deepseek-v3', 'deepseek-r1'],
     endpoint: 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions',
     protocol: 'openai',
-    modelName: '',
     defaultMaxTokens: 4096,
     contextWindow: 131072,
     apiKeyLabel: '腾讯混元 API Key',
@@ -159,9 +178,10 @@ const MODEL_REGISTRY = {
   },
   'siliconflow': {
     name: 'SiliconFlow',
+    modelName: '',
+    modelOptions: ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen3-235B-A22B', 'Pro/Llama-4-Maverick', 'Pro/Qwen-Qwen3-235B-A22B-Thinking'],
     endpoint: 'https://api.siliconflow.cn/v1/chat/completions',
     protocol: 'openai',
-    modelName: '',
     defaultMaxTokens: 4096,
     contextWindow: 131072,
     apiKeyLabel: 'SiliconFlow API Key',
@@ -170,9 +190,10 @@ const MODEL_REGISTRY = {
   },
   'modelscope': {
     name: 'ModelScope',
+    modelName: '',
+    modelOptions: ['Qwen/Qwen3-235B-A22B', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/QwQ-32B'],
     endpoint: 'https://api-inference.modelscope.cn/v1/chat/completions',
     protocol: 'openai',
-    modelName: '',
     defaultMaxTokens: 4096,
     contextWindow: 131072,
     apiKeyLabel: 'ModelScope API Key',
@@ -181,9 +202,10 @@ const MODEL_REGISTRY = {
   },
   'aihubmix': {
     name: 'AiHubMix',
+    modelName: '',
+    modelOptions: ['deepseek-v3', 'deepseek-r1', 'gpt-4o', 'claude-sonnet-4-6', 'gemini-2.5-pro'],
     endpoint: 'https://aihubmix.com/v1/chat/completions',
     protocol: 'openai',
-    modelName: '',
     defaultMaxTokens: 4096,
     contextWindow: 131072,
     apiKeyLabel: 'AiHubMix API Key',
@@ -194,9 +216,11 @@ const MODEL_REGISTRY = {
 
 // ─── 模型管理 ─────────────────────────────────────────────
 
-/** 获取所有已注册模型（含自定义供应商），hasKey的排前面 */
+/** 获取所有已注册模型（含自定义供应商），hasKey的排前面，hidden条目不显示 */
 export function getAvailableModels() {
-  const builtin = Object.entries(MODEL_REGISTRY).map(([id, cfg]) => ({
+  const builtin = Object.entries(MODEL_REGISTRY)
+    .filter(([, cfg]) => !cfg.hidden)
+    .map(([id, cfg]) => ({
     id,
     name: cfg.name,
     protocol: cfg.protocol,
@@ -205,9 +229,10 @@ export function getAvailableModels() {
     registerUrl: cfg.registerUrl || '',
     note: cfg.note || '',
     modelName: cfg.modelName || getUserModelName(id) || '',
+    modelOptions: cfg.modelOptions || (cfg.modelName ? [cfg.modelName] : []),
     extraHeaderFields: cfg.extraHeaderFields || [],
     isCustom: false,
-    hasKey: !!getApiKey(id),
+    hasKey: hasApiKey(id),
   }));
 
   const custom = getCustomProviders().map(p => ({
@@ -266,7 +291,17 @@ export function setCurrentModel(modelId) {
   } catch {}
 }
 
-/** 获取用户的API Key（支持多模型独立Key + 自定义供应商） */
+/** 检查模型是否已配置Key（仅检查模型专属key，不回退通用key） */
+export function hasApiKey(modelId) {
+  const keyName = `cc_api_key_${modelId}`;
+  try {
+    return !!localStorage.getItem(keyName);
+  } catch {
+    return false;
+  }
+}
+
+/** 获取用户的API Key（支持多模型独立Key，回退到通用key用于实际调用） */
 export function getApiKey(modelId) {
   const keyName = `cc_api_key_${modelId}`;
   try {
