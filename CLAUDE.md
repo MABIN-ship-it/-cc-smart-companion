@@ -1,5 +1,32 @@
 # CC App 开发规范
 
+## 自动化工作流（Claude Code 必须遵守）
+
+### 每次修改代码后
+1. **立即运行测试**: `npm test` — 237 个测试必须全部通过
+2. **构建验证**: `npm run build` — 确保 Vite 构建成功
+3. **Git 提交**: 每完成一个功能/bug修复，立即提交：
+   ```bash
+   git add <修改的文件>
+   git commit -m "描述: 简短说明改了什么"
+   ```
+4. **禁止不提交就继续**: 一次成功的修改 = 一次提交。不累积、不拖延。
+
+### 部署前（执行 cp -r dist/*）必须
+```bash
+npm run predeploy        # 测试 + 构建，任何失败 = 拒绝部署
+npm run test:e2e         # 端到端烟雾测试，确保应用能启动
+```
+
+### 声称"修好了"之前必须
+1. `npm test` 全部通过
+2. `npm run build` 构建成功
+3. `npm run test:e2e` 端到端测试通过（应用启动不崩溃）
+
+**三者缺一不可。** 禁止未经以上三步就说"已修复"。
+
+---
+
 ## 铁律：文件生成必须验证落盘
 
 **所有文件生成类工具**（create_excel、generate_ppt、generate_website、及未来新增的任何产出型工具），在返回成功消息前，**必须**使用 `window.electronAPI.fileExists(outputPath)` 验证目标文件真实存在。
