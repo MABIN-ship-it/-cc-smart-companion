@@ -10,3 +10,5 @@ __pycache__/
 .vite/
 release/
 out/
+e2e/screenshots/
+e2e/results.json

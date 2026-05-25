@@ -9,6 +9,8 @@
     "start": "electron .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "predeploy": "npm test && npm run build",
     "pack": "vite build && electron-builder --win portable",
     "dist": "vite build && electron-builder --win nsis"
   },
@@ -73,6 +75,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@vitejs/plugin-react": "^4.7.0",
     "electron": "^42.1.0",
     "electron-builder": "^26.8.1",
