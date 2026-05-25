@@ -7,6 +7,8 @@ import { detectUserFeedback, addLesson } from '../services/lessonsLearned';
 import { addFavorite, addFeedback, addReport } from '../services/interactions';
 import { isSpeechSupported, isMediaRecorderSupported, startListening, speakText, stopListening, startVoiceRecording, stopVoiceRecording, cancelVoiceRecording, transcribeAudio } from '../services/speech';
 import { startProactiveEngine } from '../services/proactive';
+import { startScheduledScan, stopScheduledScan } from '../services/feishuMonitor';
+import { dispatchFeishuMessage, extractTextFromEvent, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
 import { createExpressionEngine } from '../services/expressionEngine';
 import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
@@ -79,6 +81,8 @@ export default function ChatInterface() {
   const emotionRef = useRef(null);
   const presenceRef = useRef(null);
   const animFrameRef = useRef(0);
+  const feishuReplyRef = useRef(null); // { type: 'reply', eventData } | { type: 'chat', chatId }
+  const processUserMessageRef = useRef(null);
   stateRef.current = state;
 
   // Init engines
@@ -281,6 +285,128 @@ export default function ChatInterface() {
     });
     return remove;
   }, []);
+
+  // ─── 启动时自动连接飞书 ──────────────────────────────
+  useEffect(() => {
+    if (state.feishuStatus === 'connected' || state.feishuStatus === 'connecting') return;
+    if (!isFeishuConfigured()) return;
+    const config = getFeishuConfig(); // imported from feishu.js
+    if (config?.appId && config?.appSecret) {
+      dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connecting' });
+      window.electronAPI?.feishuConfigure(config.appId, config.appSecret).then(result => {
+        if (result?.success) {
+          // 状态由 onFeishuStatusChange 推送更新
+        } else {
+          dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
+        }
+      }).catch(() => {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
+      });
+    }
+  }, []);
+
+  // ─── 飞书监测引擎 ──────────────────────────────────────
+  useEffect(() => {
+    if (state.feishuStatus !== 'connected') return;
+
+    // 连接后向第一个联系人发送欢迎消息
+    sendWelcomeMessage();
+
+    // 监听WS状态变更（断线/重连）
+    let unsubFeishuStatus = null;
+    if (window.electronAPI?.onFeishuStatusChange) {
+      unsubFeishuStatus = window.electronAPI.onFeishuStatusChange((status) => {
+        if (status.event === 'error' || status.event === 'reconnecting') {
+          dispatch({ type: 'SET_FEISHU_STATUS', payload: status.running ? 'connected' : 'connecting' });
+        }
+        if (status.event === 'reconnected' || status.event === 'ready') {
+          dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connected' });
+        }
+      });
+    }
+
+    // 实时消息监听：主进程 WebSocket → IPC → 完整AI处理 → 自动回复飞书
+    let unsubFeishuMsg = null;
+    if (window.electronAPI?.onFeishuMessage) {
+      unsubFeishuMsg = window.electronAPI.onFeishuMessage((data) => {
+        dispatchFeishuMessage(data);
+
+        const text = extractTextFromEvent(data);
+        if (!text) return;
+
+        // 将飞书消息送入完整AI处理流程（和CC聊天互通、记忆互通）
+        feishuReplyRef.current = { type: 'reply', eventData: data };
+        processUserMessageRef.current?.(`[来自飞书] ${text}`, { source: 'feishu', feishuData: data });
+
+        // 同时做任务检测（长消息）
+        if (text.length > 10) {
+          import('../services/feishuMonitor.js').then(({ scanForTasks }) => {
+            scanForTasks().then(result => {
+              if (result.tasks?.length > 0) {
+                const prompts = result.tasks.map(t => ({
+                  id: t.id,
+                  description: t.description,
+                  senderName: t.senderName,
+                  chatName: t.chatName,
+                  capabilities: t.capabilities,
+                  type: t.type,
+                  onAccept: (instruction) => {
+                    feishuReplyRef.current = { type: 'reply', eventData: data };
+                    processUserMessageRef.current?.(instruction, { source: 'feishu_proactive', feishuData: data });
+                  },
+                }));
+                dispatch({ type: 'SET_PROACTIVE_PROMPTS', payload: prompts });
+              }
+            });
+          });
+        }
+      });
+    }
+
+    // 定时扫描（每日11:00/15:00/19:00 + 连接后5秒首次扫描）
+    startScheduledScan((tasks) => {
+      const prompts = tasks.map(t => ({
+        id: t.id,
+        description: t.description,
+        senderName: t.senderName,
+        chatName: t.chatName,
+        capabilities: t.capabilities,
+        type: t.type,
+        onAccept: (instruction) => {
+          feishuReplyRef.current = { type: 'chat', chatId: t.chatId };
+          processUserMessageRef.current?.(instruction, { source: 'feishu_proactive' });
+        },
+      }));
+      dispatch({ type: 'SET_PROACTIVE_PROMPTS', payload: prompts });
+    });
+
+    return () => {
+      stopScheduledScan();
+      if (unsubFeishuMsg) unsubFeishuMsg();
+      if (unsubFeishuStatus) unsubFeishuStatus();
+    };
+  }, [state.feishuStatus]);
+
+  // 监听AI响应 → 转发到飞书
+  useEffect(() => {
+    if (!feishuReplyRef.current || state.messages.length === 0) return;
+    const lastMsg = state.messages[state.messages.length - 1];
+    if (lastMsg.role !== 'assistant' || lastMsg._fw) return;
+    lastMsg._fw = true;
+    const target = feishuReplyRef.current;
+    feishuReplyRef.current = null;
+    (async () => {
+      try {
+        if (target.type === 'reply') {
+          await replyToMessage(target.eventData, lastMsg.content);
+        } else if (target.type === 'chat') {
+          await feishuSendMessage('chat_id', target.chatId, lastMsg.content);
+        }
+      } catch (e) {
+        console.error('[Feishu] 转发AI响应失败:', e);
+      }
+    })();
+  }, [state.messages]);
 
   const handleDownloadUpdate = async () => {
     setUpdateStatus('downloading');
@@ -521,6 +647,8 @@ export default function ChatInterface() {
       inputRef.current?.focus();
     }
   }, []);
+
+  processUserMessageRef.current = processUserMessage;
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -1124,7 +1252,12 @@ export default function ChatInterface() {
       {state.memoryPanelOpen && <MemoryPanel />}
       {state.personalityPanelOpen && <PersonalityPanel />}
       {state.sessionsPanelOpen && <SessionsPanel />}
-      {state.toolboxPanelOpen && <ToolboxPanel />}
+      {state.toolboxPanelOpen && (
+        <>
+          <div className="toolbox-backdrop" onClick={() => dispatch({ type: 'TOGGLE_TOOLBOX' })} />
+          <ToolboxPanel />
+        </>
+      )}
       {state.proactivePrompts?.length > 0 && <ProactivePrompt />}
       {voicePanelOpen && <VoiceClonePanel onClose={() => setVoicePanelOpen(false)} />}
       {knowledgeGraphPanelOpen && (

@@ -150,6 +150,8 @@ function appReducer(state, action) {
     }
     case 'SET_FEISHU_STATUS':
       return { ...state, feishuStatus: action.payload };
+    case 'SET_PROACTIVE_PROMPTS':
+      return { ...state, proactivePrompts: action.payload };
     case 'DISMISS_PROACTIVE_PROMPT':
       return { ...state, proactivePrompts: state.proactivePrompts.filter(p => p.id !== action.payload) };
     default:

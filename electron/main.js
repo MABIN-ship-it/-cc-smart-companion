@@ -1116,6 +1116,11 @@ ipcMain.handle('feishu:configure', async (_event, appId, appSecret) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('feishu:message', data);
       }
+    }, (status) => {
+      // 推送WS状态变更到渲染进程
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('feishu:statusChange', status);
+      }
     });
     return result;
   } catch (e) {

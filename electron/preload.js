@@ -77,6 +77,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   feishuConfigure: (appId, appSecret) => ipcRenderer.invoke('feishu:configure', appId, appSecret),
   feishuStatus: () => ipcRenderer.invoke('feishu:status'),
   feishuDisconnect: () => ipcRenderer.invoke('feishu:disconnect'),
+  onFeishuMessage: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('feishu:message', handler);
+    return () => ipcRenderer.removeListener('feishu:message', handler);
+  },
+  onFeishuStatusChange: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('feishu:statusChange', handler);
+    return () => ipcRenderer.removeListener('feishu:statusChange', handler);
+  },
 
   // Git & Project context
   gitStatus: (cwd) => ipcRenderer.invoke('git:status', cwd),

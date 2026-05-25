@@ -2410,6 +2410,12 @@ body {
 
 /* ====== Toolbox Panel (工具箱面板) ====== */
 
+.toolbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+
 .toolbox-panel {
   position: fixed;
   right: 0;

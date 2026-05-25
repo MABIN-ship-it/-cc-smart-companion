@@ -6,6 +6,7 @@ const { WSClient, EventDispatcher } = require('@larksuiteoapi/node-sdk');
 
 let wsClient = null;
 let messageHandler = null;
+let statusCallback = null;
 let isRunning = false;
 let diagnosticLog = [];
 const MAX_DIAG_LOG = 100;
@@ -26,9 +27,10 @@ const customLogger = {
   trace: (...args) => { console.debug('[SDK:trace]', ...args); diag('[SDK:trace] ' + args.join(' ')); },
 };
 
-function start(appId, appSecret, onMessage) {
+function start(appId, appSecret, onMessage, onStatus) {
   stop();
   messageHandler = onMessage;
+  statusCallback = onStatus || null;
   diag(`启动连接, appId=${appId.slice(0, 8)}...`);
 
   try {
@@ -61,19 +63,23 @@ function start(appId, appSecret, onMessage) {
     wsClient.onReady = () => {
       isRunning = true;
       diag('WebSocket已连接(Ready)');
+      if (statusCallback) statusCallback({ running: true, event: 'ready' });
     };
 
     wsClient.onError = (e) => {
       diag('连接错误: ' + (e?.message || e));
+      if (statusCallback) statusCallback({ running: isRunning, event: 'error', error: e?.message || 'unknown' });
     };
 
     wsClient.onReconnecting = () => {
       diag('重连中...');
+      if (statusCallback) statusCallback({ running: false, event: 'reconnecting' });
     };
 
     wsClient.onReconnected = () => {
       isRunning = true;
       diag('重连成功');
+      if (statusCallback) statusCallback({ running: true, event: 'reconnected' });
     };
 
     wsClient.start({ eventDispatcher: dispatcher });
@@ -90,8 +96,12 @@ function start(appId, appSecret, onMessage) {
 function stop() {
   diag('停止');
   isRunning = false;
+  if (wsClient) {
+    try { wsClient.close({ force: true }); } catch (e) { diag('关闭WSClient异常: ' + e.message); }
+    wsClient = null;
+  }
   messageHandler = null;
-  wsClient = null;
+  statusCallback = null;
   return { success: true };
 }
 
