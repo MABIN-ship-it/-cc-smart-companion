@@ -519,7 +519,7 @@ export default function ChatInterface() {
           existing.status = 'done';
         }
       } else if (type === 'text') {
-        setStreamingText(data);
+        setStreamingText(prev => (data.length >= (prev || '').length) ? data : (prev || '') + '\n' + data);
       } else if (type === 'think') {
         setThinking(true);
         thinkingTextRef.current = data;
@@ -528,9 +528,9 @@ export default function ChatInterface() {
     };
 
     const isDup = (a, b) => {
-      if (!a || !b || a.length < 30) return false;
-      const sa = a.slice(0, 100), sb = b.slice(0, 100);
-      return sa === sb || sa.includes(sb.slice(0, 50)) || sb.includes(sa.slice(0, 50));
+      if (!a || !b || a.length < 50) return false;
+      const sa = a.slice(0, 200), sb = b.slice(0, 200);
+      return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
     };
 
     try {
@@ -681,7 +681,7 @@ export default function ChatInterface() {
       } else if (type === 'tool_result') {
         setToolSteps(prev => prev.map(st => st.id === data.id ? { ...st, result: data.result, duration: data.duration, status: 'done' } : st));
       } else if (type === 'text') {
-        setStreamingText(data);
+        setStreamingText(prev => (data.length >= (prev || '').length) ? data : (prev || '') + '\n' + data);
       } else if (type === 'think') {
         setThinking(true);
         thinkingTextRef.current = data;
@@ -690,9 +690,9 @@ export default function ChatInterface() {
     };
 
     const isDup = (a, b) => {
-      if (!a || !b || a.length < 30) return false;
-      const sa = a.slice(0, 100), sb = b.slice(0, 100);
-      return sa === sb || sa.includes(sb.slice(0, 50)) || sb.includes(sa.slice(0, 50));
+      if (!a || !b || a.length < 50) return false;
+      const sa = a.slice(0, 200), sb = b.slice(0, 200);
+      return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
     };
 
     (async () => {
@@ -887,7 +887,7 @@ export default function ChatInterface() {
         const existing = collectedSteps.find(s => s.id === data.id);
         if (existing) { existing.result = data.result; existing.duration = data.duration; existing.status = 'done'; }
       } else if (type === 'text') {
-        setStreamingText(data);
+        setStreamingText(prev => (data.length >= (prev || '').length) ? data : (prev || '') + '\n' + data);
       } else if (type === 'think') {
         setThinking(true);
         thinkingTextRef.current = data;
@@ -896,9 +896,9 @@ export default function ChatInterface() {
     };
 
     const isDup = (a, b) => {
-      if (!a || !b || a.length < 30) return false;
-      const sa = a.slice(0, 100), sb = b.slice(0, 100);
-      return sa === sb || sa.includes(sb.slice(0, 50)) || sb.includes(sa.slice(0, 50));
+      if (!a || !b || a.length < 50) return false;
+      const sa = a.slice(0, 200), sb = b.slice(0, 200);
+      return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
     };
 
     try {

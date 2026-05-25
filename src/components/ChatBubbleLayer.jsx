@@ -181,13 +181,6 @@ export default function ChatBubbleLayer({
     prevStreaming.current = streamingText;
   }, [streamingText, thinking]);
 
-  // 新思考内容到达时重新展开（ReAct 后续迭代）
-  useEffect(() => {
-    if (thinking && thinkCollapsed && thinkingText) {
-      setThinkCollapsed(false);
-    }
-  }, [thinkingText]);
-
   const visibleMsgs = messages.filter(m =>
     (m.role === 'assistant' || m.role === 'user') && m.content
   );

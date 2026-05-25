@@ -513,11 +513,15 @@ function parseAnthropicResponse(data) {
   }
 
   const textParts = [];
+  const thinkingParts = [];
   const toolUses = [];
 
   for (const block of content) {
     if (block.type === 'text' && block.text) {
       textParts.push(block.text);
+    }
+    if (block.type === 'thinking' && block.thinking) {
+      thinkingParts.push(block.thinking);
     }
     if (block.type === 'tool_use') {
       toolUses.push({
@@ -530,6 +534,7 @@ function parseAnthropicResponse(data) {
 
   return {
     text: textParts.join('').trim(),
+    thinking: thinkingParts.join('').trim() || undefined,
     toolUses,
     stopReason: data.stop_reason || null,
     usage: data.usage || null,
@@ -551,6 +556,7 @@ function parseOpenAIResponse(data) {
 
   const message = choice.message || {};
   const text = message.content || '';
+  const thinking = message.reasoning_content || undefined;
   const toolUses = [];
 
   if (message.tool_calls?.length) {
@@ -576,6 +582,7 @@ function parseOpenAIResponse(data) {
 
   return {
     text: text.trim(),
+    thinking,
     toolUses,
     stopReason: choice.finish_reason || null,
     usage: data.usage || null,

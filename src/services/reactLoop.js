@@ -82,6 +82,10 @@ async function nonStreamingRequest({ model, messages, systemPrompt, tools, onPro
       return { error: result.error };
     }
 
+    if (result.thinking) {
+      onProgress?.({ type: 'think', data: result.thinking });
+    }
+
     if (result.text) {
       onProgress?.({ type: 'text', data: result.text });
     }
