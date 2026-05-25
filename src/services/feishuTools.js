@@ -1,0 +1,308 @@
+/**
+ * 飞书 AI 工具 — 注册到 toolRegistry，让 CC 能操作飞书
+ *
+ * 工具函数设计原则：单一职责、返回结构化结果、错误友好提示
+ */
+import {
+  getFeishuConfig, getTenantAccessToken, feishuApi,
+  sendMessage, getChatList, getUserList, searchContacts,
+  createDocument, createBase, getMessageList, listBaseTables, searchBaseRecords,
+  addBaseRecord, updateBaseRecord,
+} from './feishu';
+
+const FEISHU_BASE_URL = 'https://open.feishu.cn/open-apis';
+
+/** 获取当前已保存的飞书配置 */
+function ensureConfig() {
+  const cfg = getFeishuConfig();
+  if (!cfg?.appId || !cfg?.appSecret) {
+    return { ok: false, error: '飞书未连接，请先在工具箱中配置飞书凭证' };
+  }
+  return { ok: true, cfg };
+}
+
+/** 飞书API请求（保证token有效） */
+async function apiCall(method, path, body) {
+  const configCheck = ensureConfig();
+  if (!configCheck.ok) return configCheck;
+
+  try {
+    const token = await getTenantAccessToken();
+    const url = `${FEISHU_BASE_URL}${path}`;
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+    };
+    if (body && method !== 'GET') options.body = JSON.stringify(body);
+
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (data.code !== 0) {
+      return { ok: false, error: `飞书API错误: ${data.code} - ${data.msg}` };
+    }
+    return { ok: true, data: data.data };
+  } catch (e) {
+    return { ok: false, error: `飞书请求失败: ${e.message}` };
+  }
+}
+
+// ─── 工具：发送消息 ───────────────────────────────
+
+export async function feishuSendMessage(input) {
+  const { receive_id_type, receive_id, content } = input;
+  if (!receive_id || !content) {
+    return '请指定接收人(receive_id)和消息内容(content)。例如：{ "receive_id_type": "open_id", "receive_id": "ou_xxx", "content": "你好" }';
+  }
+  try {
+    const result = await sendMessage(receive_id_type || 'open_id', receive_id, content);
+    return result?.messageId ? `消息已发送，messageId: ${result.messageId}` : '消息发送失败';
+  } catch (e) {
+    return `发送失败: ${e.message}`;
+  }
+}
+
+// ─── 工具：消息总结 ───────────────────────────────
+
+export async function feishuMessageSummary(input) {
+  const { chat_id, keyword, hours } = input || {};
+
+  // 读取群列表
+  let chatList;
+  try {
+    const listResult = await getChatList();
+    chatList = listResult;
+  } catch (e) {
+    return `获取群列表失败: ${e.message}`;
+  }
+
+  if (!chatList?.length) return '未找到任何群聊。请确保飞书应用已加入群聊。';
+
+  // 找到目标群
+  let targetChat;
+  if (chat_id) {
+    targetChat = chatList.find(c => c.chat_id === chat_id);
+  }
+  if (!targetChat && keyword) {
+    targetChat = chatList.find(c => c.name?.includes(keyword));
+  }
+  if (!targetChat) {
+    const names = chatList.map(c => `${c.name}(chat_id:${c.chat_id})`).join(', ');
+    return `请指定要总结的群。可用的群：${names}`;
+  }
+
+  // 拉取消息
+  let messages;
+  try {
+    messages = await getMessageList(targetChat.chat_id, 'chat', { pageSize: 50 });
+  } catch (e) {
+    return `无法读取群消息(可能需要群聊消息权限): ${e.message}`;
+  }
+
+  if (!messages?.items?.length) {
+    return `群"${targetChat.name}"暂无消息`;
+  }
+
+  // 格式化消息摘要
+  const now = Date.now();
+  const timeFilter = hours ? hours * 3600000 : 86400000;
+  const recentMessages = messages.items.filter(m => {
+    const msgTime = parseInt(m.create_time) * 1000 || 0;
+    return now - msgTime < timeFilter;
+  });
+
+  const summary = recentMessages.slice(0, 30).map(m => {
+    const sender = m.sender?.id || '未知';
+    const content = extractMessageText(m);
+    return `[${sender}]: ${content}`;
+  }).join('\n');
+
+  return `群"${targetChat.name}"最近${hours || 24}小时消息摘要（共${recentMessages.length}条）：\n${summary}`;
+}
+
+function extractMessageText(msg) {
+  const body = msg.body?.content || '';
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed.text) return parsed.text;
+    if (parsed.elements) {
+      return parsed.elements.map(e => e.text_run?.content || '').join('');
+    }
+    return body.slice(0, 200);
+  } catch {
+    return body.slice(0, 200);
+  }
+}
+
+// ─── 工具：创建飞书文档 ───────────────────────────────
+
+export async function feishuCreateDoc(input) {
+  const { title, content } = input || {};
+  if (!title) return '请提供文档标题。例如：{ "title": "项目复盘", "content": "..." }';
+
+  try {
+    const result = await createDocument(title, content || '');
+    return `飞书文档已创建：${result.title}\n链接：${result.url}\n文档ID：${result.documentId}`;
+  } catch (e) {
+    return `创建文档失败: ${e.message}`;
+  }
+}
+
+// ─── 工具：操作多维表格 ───────────────────────────────
+
+export async function feishuBaseOperation(input) {
+  const { operation, app_token, table_id, record } = input || {};
+
+  if (operation === 'create_base') {
+    const { name, folder_token } = input || {};
+    if (!name) return '请提供多维表格名称。例如：{ "operation": "create_base", "name": "项目进度表" }';
+    try {
+      const result = await createBase(name, folder_token);
+      return `多维表格已创建：${name}\napp_token: ${result.app?.app_token || 'unknown'}\n链接: ${result.app?.url || '无'}`;
+    } catch (e) {
+      return `创建多维表格失败: ${e.message}`;
+    }
+  }
+
+  if (operation === 'list_tables') {
+    if (!app_token) return '请提供多维表格的 app_token。';
+    try {
+      const tables = await listBaseTables(app_token);
+      if (tables?.items) {
+        return `多维表格 ${app_token} 包含以下数据表：\n${tables.items.map(t => `- ${t.name}(table_id: ${t.table_id})`).join('\n')}`;
+      }
+      return '未找到数据表';
+    } catch (e) {
+      return `获取表格失败: ${e.message}`;
+    }
+  }
+
+  if (operation === 'search') {
+    if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+    try {
+      const records = await searchBaseRecords(app_token, table_id);
+      if (records?.items) {
+        return `表格中共 ${records.total || records.items.length} 条记录：\n${JSON.stringify(records.items.slice(0, 10), null, 2)}`;
+      }
+      return '未找到记录';
+    } catch (e) {
+      return `搜索记录失败: ${e.message}`;
+    }
+  }
+
+  if (operation === 'add_record') {
+    if (!app_token || !table_id || !record) return '请提供 app_token、table_id 和 record(fields对象)';
+    try {
+      const result = await addBaseRecord(app_token, table_id, record);
+      return `记录已添加，record_id: ${result.record?.record_id || 'unknown'}`;
+    } catch (e) {
+      return `添加记录失败: ${e.message}`;
+    }
+  }
+
+  if (operation === 'update_record') {
+    if (!app_token || !table_id || !record?.record_id) return '请提供 app_token、table_id 和 record(含record_id)';
+    try {
+      await updateBaseRecord(app_token, table_id, record.record_id, record.fields || {});
+      return '记录已更新';
+    } catch (e) {
+      return `更新记录失败: ${e.message}`;
+    }
+  }
+
+  return '请指定操作类型(operation)：create_base / list_tables / search / add_record / update_record';
+}
+
+// ─── 工具：搜索联系人 ───────────────────────────────
+
+export async function feishuSearchContacts(input) {
+  const { query } = input || {};
+  if (!query) return '请提供搜索关键词。例如：{ "query": "张三" }';
+
+  try {
+    const contacts = await searchContacts(query);
+    if (contacts?.items?.length) {
+      return `找到${contacts.items.length}个联系人：\n${contacts.items.map(c => `- ${c.name || c.id}`).join('\n')}`;
+    }
+    return `未找到与"${query}"相关的联系人`;
+  } catch (e) {
+    return `搜索联系人失败: ${e.message}`;
+  }
+}
+
+// ─── 工具定义（给 LLM 的 schema） ──────────────────────
+
+export const FEISHU_TOOLS = [
+  {
+    name: 'feishu_send_message',
+    description: '发送消息到飞书用户或群聊',
+    input_schema: {
+      type: 'object',
+      properties: {
+        receive_id_type: { type: 'string', description: '接收者类型：open_id/chat_id/user_id' },
+        receive_id: { type: 'string', description: '接收者ID' },
+        content: { type: 'string', description: '消息内容' },
+      },
+      required: ['receive_id', 'content'],
+    },
+  },
+  {
+    name: 'feishu_message_summary',
+    description: '总结飞书群聊消息。用户说"总结群消息"时调用此工具。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        chat_id: { type: 'string', description: '群ID（可选）' },
+        keyword: { type: 'string', description: '群名称关键词（可选）' },
+        hours: { type: 'number', description: '提取最近多少小时的消息，默认24' },
+      },
+    },
+  },
+  {
+    name: 'feishu_create_doc',
+    description: '在飞书创建文档。用户说"写个文档"或"生成报告"时调用。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '文档标题' },
+        content: { type: 'string', description: '文档内容（支持文本）' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'feishu_base_operation',
+    description: '操作飞书多维表格：新建表格、查看表格列表、搜索记录、新增记录、更新记录。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        operation: { type: 'string', description: 'create_base/list_tables/search/add_record/update_record' },
+        name: { type: 'string', description: '新建多维表格时的名称（仅create_base需）' },
+        folder_token: { type: 'string', description: '新建时的文件夹token（可选）' },
+        app_token: { type: 'string', description: '多维表格的app_token' },
+        table_id: { type: 'string', description: '数据表的table_id' },
+        record: { type: 'object', description: '记录数据（新增/更新时）' },
+      },
+      required: ['operation'],
+    },
+  },
+  {
+    name: 'feishu_search_contacts',
+    description: '搜索飞书通讯录中的联系人。',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string', description: '搜索关键词' } },
+      required: ['query'],
+    },
+  },
+];
+
+export const FEISHU_EXECUTORS = {
+  feishu_send_message: feishuSendMessage,
+  feishu_message_summary: feishuMessageSummary,
+  feishu_create_doc: feishuCreateDoc,
+  feishu_base_operation: feishuBaseOperation,
+  feishu_search_contacts: feishuSearchContacts,
+};

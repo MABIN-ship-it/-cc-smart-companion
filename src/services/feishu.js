@@ -1,0 +1,388 @@
+/**
+ * 飞书集成服务 — API 封装 + 配置管理 + 事件回调
+ *
+ * 使用飞书开放平台 API：
+ *   - 消息收发: im/v1/messages
+ *   - 多维表格: bitable/v1
+ *   - 云文档: docx/v1
+ *   - 通讯录: contact/v3
+ *   - 认证: auth/v3
+ */
+const FEISHU_CONFIG_KEY = 'cc_feishu_config';
+const FEISHU_TOKEN_KEY = 'cc_feishu_token';
+const FEISHU_BASE_URL = 'https://open.feishu.cn/open-apis';
+const FEISHU_CREDENTIALS_KEY = 'cc_feishu_credentials'; // 持久化凭证
+
+// 事件回调列表
+const messageCallbacks = [];
+let connectionStatus = 'disconnected'; // 'disconnected' | 'connecting' | 'connected'
+
+// ─── 配置管理 ─────────────────────────────────────
+
+export function saveFeishuConfig(appId, appSecret) {
+  const config = { appId, appSecret, updatedAt: Date.now() };
+  localStorage.setItem(FEISHU_CONFIG_KEY, JSON.stringify(config));
+  // 同时持久化凭证（明文，方便自动重连）
+  localStorage.setItem(FEISHU_CREDENTIALS_KEY, JSON.stringify({ appId, appSecret }));
+  return config;
+}
+
+export function getFeishuConfig() {
+  try {
+    const data = localStorage.getItem(FEISHU_CONFIG_KEY);
+    if (data) return JSON.parse(data);
+    // fallback: 从凭证存储读取
+    const cred = localStorage.getItem(FEISHU_CREDENTIALS_KEY);
+    return cred ? JSON.parse(cred) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isFeishuConfigured() {
+  const config = getFeishuConfig();
+  return !!(config && config.appId && config.appSecret);
+}
+
+export function getConnectionStatus() {
+  return connectionStatus;
+}
+
+export function setConnectionStatus(status) {
+  connectionStatus = status;
+}
+
+// ─── Token 管理 ─────────────────────────────────────
+
+function getCachedToken() {
+  try {
+    const data = localStorage.getItem(FEISHU_TOKEN_KEY);
+    if (!data) return null;
+    const token = JSON.parse(data);
+    if (token.expiresAt && Date.now() < token.expiresAt - 300000) {
+      return token.accessToken;
+    }
+    return null;
+  } catch { return null; }
+}
+
+function cacheToken(accessToken, expireIn) {
+  localStorage.setItem(FEISHU_TOKEN_KEY, JSON.stringify({
+    accessToken,
+    expiresAt: Date.now() + expireIn * 1000,
+  }));
+}
+
+export async function getTenantAccessToken() {
+  const cached = getCachedToken();
+  if (cached) return cached;
+
+  const config = getFeishuConfig();
+  if (!config?.appId || !config?.appSecret) {
+    throw new Error('飞书未配置');
+  }
+
+  const response = await fetch(`${FEISHU_BASE_URL}/auth/v3/tenant_access_token/internal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ app_id: config.appId, app_secret: config.appSecret }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`获取飞书token失败: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (data.code !== 0) {
+    throw new Error(`飞书认证失败(code=${data.code}): ${data.msg}`);
+  }
+
+  cacheToken(data.tenant_access_token, data.expire);
+  return data.tenant_access_token;
+}
+
+// ─── 通用 API 请求 ─────────────────────────────────────
+
+export async function feishuApi(method, path, body = null) {
+  const token = await getTenantAccessToken();
+  const url = `${FEISHU_BASE_URL}${path}`;
+
+  const options = {
+    method,
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+  };
+
+  if (body && method !== 'GET') options.body = JSON.stringify(body);
+
+  const response = await fetch(url, options);
+  const data = await response.json();
+
+  if (data.code !== 0) {
+    throw new Error(`飞书API错误(${data.code}): ${data.msg}`);
+  }
+
+  return data;
+}
+
+// ─── 测试连接 ─────────────────────────────────────
+
+export async function testConnection(appId, appSecret) {
+  try {
+    const response = await fetch(`${FEISHU_BASE_URL}/auth/v3/tenant_access_token/internal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    });
+    const data = await response.json();
+    if (data.code !== 0) {
+      return { success: false, error: `飞书认证失败: ${data.msg}` };
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: `连接失败: ${e.message}` };
+  }
+}
+
+// ─── 消息 ─────────────────────────────────────
+
+export async function sendMessage(receiveIdType, receiveId, content, msgType = 'text') {
+  const body = {
+    receive_id: receiveId,
+    msg_type: msgType,
+    content: msgType === 'text' ? JSON.stringify({ text: content }) : content,
+  };
+  const result = await feishuApi('POST', `/im/v1/messages?receive_id_type=${receiveIdType}`, body);
+  return { success: true, messageId: result.data?.message_id, data: result.data };
+}
+
+export async function getMessageList(containerId, containerIdType = 'chat', { pageSize = 50, pageToken } = {}) {
+  let path = `/im/v1/messages?container_id_type=${containerIdType}&container_id=${containerId}&page_size=${pageSize}`;
+  if (pageToken) path += `&page_token=${pageToken}`;
+  const result = await feishuApi('GET', path);
+  return result.data || { items: [] };
+}
+
+export async function getMessageContent(messageId) {
+  const result = await feishuApi('GET', `/im/v1/messages/${messageId}`);
+  return result.data;
+}
+
+// ─── 群聊 ─────────────────────────────────────
+
+export async function getChatList({ pageSize = 50, pageToken } = {}) {
+  let path = `/im/v1/chats?page_size=${pageSize}`;
+  if (pageToken) path += `&page_token=${pageToken}`;
+  const result = await feishuApi('GET', path);
+  return result.data?.items || [];
+}
+
+// ─── 通讯录 ─────────────────────────────────────
+
+export async function getUserList({ pageSize = 50, pageToken } = {}) {
+  let path = `/contact/v3/users?page_size=${pageSize}`;
+  if (pageToken) path += `&page_token=${pageToken}`;
+  const result = await feishuApi('GET', path);
+  return result.data?.items || [];
+}
+
+export async function searchContacts(query) {
+  const result = await feishuApi('GET', `/search/v1/contact?query=${encodeURIComponent(query)}`);
+  return result.data || [];
+}
+
+export async function getUserInfo() {
+  const result = await feishuApi('GET', '/contact/v3/users/me');
+  return result.data;
+}
+
+// ─── 云文档 ─────────────────────────────────────
+
+export async function createDocument(title, content) {
+  const createResult = await feishuApi('POST', '/docx/v1/documents', { title });
+  const documentId = createResult.data?.document?.document_id;
+  if (!documentId) throw new Error('创建文档失败：未获取到文档ID');
+
+  if (content) {
+    await feishuApi('POST', `/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
+      children: [{
+        block_type: 2,
+        text: {
+          elements: [{
+            text_run: { content: content },
+          }],
+        },
+      }],
+    });
+  }
+
+  return {
+    success: true,
+    documentId,
+    url: `https://bytedance.feishu.cn/docx/${documentId}`,
+    title,
+  };
+}
+
+export async function getDocumentContent(documentId) {
+  const result = await feishuApi('GET', `/docx/v1/documents/${documentId}`);
+  return result.data;
+}
+
+export async function appendDocumentBlocks(documentId, blocks) {
+  const result = await feishuApi('POST', `/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
+    children: blocks,
+  });
+  return result.data;
+}
+
+// ─── 多维表格 ─────────────────────────────────────
+
+export async function createBase(name, folderToken) {
+  const body = { name };
+  if (folderToken) body.folder_token = folderToken;
+  const result = await feishuApi('POST', '/bitable/v1/apps', body);
+  return result.data;
+}
+
+export async function listBaseTables(appToken) {
+  const result = await feishuApi('GET', `/bitable/v1/apps/${appToken}/tables`);
+  return result.data || { items: [] };
+}
+
+export async function addTable(appToken, tableName, fields) {
+  const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables`, {
+    table: { name: tableName, fields: fields || [] },
+  });
+  return result.data;
+}
+
+export async function searchBaseRecords(appToken, tableId, { pageSize = 50, pageToken, filter, sort } = {}) {
+  let path = `/bitable/v1/apps/${appToken}/tables/${tableId}/records/search`;
+  const body = {};
+  if (pageSize) body.page_size = pageSize;
+  if (pageToken) body.page_token = pageToken;
+  if (filter) body.filter = filter;
+  if (sort) body.sort = sort;
+  const result = await feishuApi('POST', path, body);
+  return result.data || { items: [] };
+}
+
+export async function addBaseRecord(appToken, tableId, fields) {
+  const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/records`, {
+    fields,
+  });
+  return result.data;
+}
+
+export async function updateBaseRecord(appToken, tableId, recordId, fields) {
+  const result = await feishuApi('PUT', `/bitable/v1/apps/${appToken}/tables/${tableId}/records/${recordId}`, {
+    fields,
+  });
+  return result.data;
+}
+
+export async function batchAddBaseRecords(appToken, tableId, records) {
+  const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`, {
+    records,
+  });
+  return result.data;
+}
+
+// ─── 事件回调 ─────────────────────────────────────
+
+export function onFeishuMessage(callback) {
+  messageCallbacks.push(callback);
+  return () => {
+    const idx = messageCallbacks.indexOf(callback);
+    if (idx >= 0) messageCallbacks.splice(idx, 1);
+  };
+}
+
+export function dispatchFeishuMessage(data) {
+  messageCallbacks.forEach(cb => {
+    try { cb(data); } catch {}
+  });
+}
+
+// ─── 消息提取 ─────────────────────────────────────
+
+/**
+ * 从 WebSocket 事件数据提取消息文本
+ * SDK可能传递完整schema(含event包装)或去包装后的event对象，双路径兼容
+ */
+export function extractTextFromEvent(eventData) {
+  try {
+    // 路径1: 完整schema { event: { message: { content } } }
+    // 路径2: 去包装后 { message: { content } }
+    const msg = eventData?.event?.message || eventData?.message;
+    const content = msg?.content;
+    if (!content) return '';
+    const parsed = JSON.parse(content);
+    if (parsed.text) return parsed.text;
+    if (parsed.elements) {
+      return parsed.elements.map(e => e.text_run?.content || '').join('');
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+/** 从 WebSocket 事件数据提取发送者 open_id */
+export function extractSenderOpenId(eventData) {
+  // 路径1: { event: { sender: { sender_id: { open_id } } } }
+  // 路径2: { sender: { sender_id: { open_id } } }
+  const sender = eventData?.event?.sender || eventData?.sender;
+  return sender?.sender_id?.open_id || '';
+}
+
+// ─── 欢迎消息 ─────────────────────────────────────
+
+/** 连接成功后向第一个可用用户发送欢迎消息 */
+export async function sendWelcomeMessage() {
+  try {
+    const users = await getUserList({ pageSize: 1 });
+    if (!users?.length) return false;
+    const user = users[0];
+    await sendMessage(
+      'open_id',
+      user.open_id,
+      '你好！我是 CC助手，已成功连接飞书。有什么需要尽管跟我说！'
+    );
+    return true;
+  } catch (e) {
+    console.error('[Feishu] 发送欢迎消息失败:', e?.message || e);
+    return false;
+  }
+}
+
+/** 自动回复收到的飞书消息，支持自定义回复内容 */
+export async function replyToMessage(eventData, customReply) {
+  const openId = extractSenderOpenId(eventData);
+  const text = extractTextFromEvent(eventData);
+  if (!openId || !text) return null;
+
+  const reply = customReply || `收到：「${text.slice(0, 80)}」\n\n我是 CC助手，你的桌面 AI 伙伴。`;
+  try {
+    return await sendMessage('open_id', openId, reply);
+  } catch (e) {
+    console.error('[Feishu] 自动回复失败:', e?.message || e);
+    return null;
+  }
+}
+
+// ─── 配置指引 ─────────────────────────────────────
+
+export function getSetupGuide() {
+  return `飞书连接设置指南
+
+获取凭证步骤：
+1. 浏览器打开 open.feishu.cn
+2. 飞书扫码登录 → 开发者后台
+3. 创建企业自建应用（名称填"CC助手"）
+4. 左侧菜单 → 凭证与基础信息 → 复制 App ID 和 App Secret
+5. 粘贴回 CC 配置面板 → 点击"测试连接"`;
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+electron-runtime/
+*.log
+debug.log
+.env
+.env.local
+__pycache__/
+*.pyc
+.vite/
+release/
+out/

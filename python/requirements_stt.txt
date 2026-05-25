@@ -1,0 +1,4 @@
+faster-whisper>=1.0.0
+flask>=3.0
+soundfile>=0.12
+pydub>=0.25
