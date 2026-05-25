@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "predeploy": "npm test && npm run build",
+    "verify": "npm test && npm run build && npm run test:e2e",
     "pack": "vite build && electron-builder --win portable",
     "dist": "vite build && electron-builder --win nsis"
   },
