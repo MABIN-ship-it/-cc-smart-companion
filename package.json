@@ -69,6 +69,7 @@
     }
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.65.0",
     "electron-updater": "^6.8.3",
     "exceljs": "^4.4.0",
     "react": "^18.3.1",
