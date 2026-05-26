@@ -723,14 +723,23 @@ export async function* sendModelRequestStream({
         switch (frame.event) {
           case 'content_block_start': {
             const block = frame.data?.content_block;
-            if (block) contentBlocks.push(block);
+            if (block) {
+              contentBlocks[frame.data?.index || 0] = block;
+            }
             break;
           }
           case 'content_block_delta': {
             const delta = frame.data?.delta;
+            const idx = frame.data?.index || 0;
+            const blockType = contentBlocks[idx]?.type;
             if (delta?.type === 'text_delta' && delta.text) {
-              accumulatedText += delta.text;
-              yield { type: 'text', text: delta.text, accumulated: accumulatedText };
+              if (blockType === 'thinking') {
+                accumulatedThinking += delta.text;
+                yield { type: 'think', text: delta.text, accumulated: accumulatedThinking };
+              } else {
+                accumulatedText += delta.text;
+                yield { type: 'text', text: delta.text, accumulated: accumulatedText };
+              }
             } else if (delta?.type === 'thinking_delta' && delta.thinking) {
               accumulatedThinking += delta.thinking;
               yield { type: 'think', text: delta.thinking, accumulated: accumulatedThinking };

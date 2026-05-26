@@ -520,7 +520,7 @@ export default function ChatInterface() {
           existing.status = 'done';
         }
       } else if (type === 'text') {
-        setStreamingText(prev => (data.length >= (prev || '').length) ? data : (prev || '') + '\n' + data);
+        setStreamingText(data);
       } else if (type === 'think') {
         setThinking(true);
         thinkingTextRef.current = data;
@@ -682,7 +682,7 @@ export default function ChatInterface() {
       } else if (type === 'tool_result') {
         setToolSteps(prev => prev.map(st => st.id === data.id ? { ...st, result: data.result, duration: data.duration, status: 'done' } : st));
       } else if (type === 'text') {
-        setStreamingText(prev => (data.length >= (prev || '').length) ? data : (prev || '') + '\n' + data);
+        setStreamingText(data);
       } else if (type === 'think') {
         setThinking(true);
         thinkingTextRef.current = data;
@@ -888,7 +888,7 @@ export default function ChatInterface() {
         const existing = collectedSteps.find(s => s.id === data.id);
         if (existing) { existing.result = data.result; existing.duration = data.duration; existing.status = 'done'; }
       } else if (type === 'text') {
-        setStreamingText(prev => (data.length >= (prev || '').length) ? data : (prev || '') + '\n' + data);
+        setStreamingText(data);
       } else if (type === 'think') {
         setThinking(true);
         thinkingTextRef.current = data;

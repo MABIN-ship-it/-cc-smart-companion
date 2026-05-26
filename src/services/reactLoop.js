@@ -145,6 +145,16 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
   let conversation = cleanedMessages;
   let iteration = 0;
   let finalResponse = '';
+  let roundPrefix = ''; // 跨轮累积文本
+
+  // 包装 onProgress：跨轮文本带上历史前缀
+  const wrapProgress = (event) => {
+    if (event.type === 'text' && roundPrefix) {
+      onProgress?.({ type: 'text', data: roundPrefix + '\n\n' + event.data });
+    } else {
+      onProgress?.(event);
+    }
+  };
 
   // ── ReAct循环 ──────────────────────────────────────────
   while (iteration < MAX_ITERATIONS) {
@@ -178,7 +188,7 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       messages: conversation,
       systemPrompt,
       tools,
-      onProgress,
+      onProgress: wrapProgress,
       signal: fetchSignal,
     });
 
@@ -190,7 +200,7 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
         messages: conversation,
         systemPrompt,
         tools,
-        onProgress,
+        onProgress: wrapProgress,
         signal: fetchSignal,
       });
     }
@@ -203,8 +213,9 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     // ── 没有tool_use：返回文本给用户 ──────────────────────
     if (!result.toolUses || result.toolUses.length === 0) {
       if (result.text) {
-        onProgress?.({ type: 'text', data: result.text });
-        return result.text;
+        const finalText = roundPrefix ? roundPrefix + '\n\n' + result.text : result.text;
+        onProgress?.({ type: 'text', data: finalText });
+        return finalText;
       }
       // 空响应：让模型继续
       conversation.push({ role: 'assistant', content: '请继续。' });
@@ -303,6 +314,11 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       conversation.push(buildToolResultsMessage(allToolResults));
     }
 
+    // 保存本轮文本到跨轮前缀，防止下一轮覆盖
+    if (result.text) {
+      roundPrefix = roundPrefix ? roundPrefix + '\n\n' + result.text : result.text;
+    }
+
     // 继续循环
   }
 
@@ -322,12 +338,13 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     messages: conversation,
     systemPrompt,
     tools: [],
-    onProgress,
+    onProgress: wrapProgress,
     signal: fetchSignal2,
   });
 
   if (finalResult.text) {
-    return finalResult.text;
+    const finalText = roundPrefix ? roundPrefix + '\n\n' + finalResult.text : finalResult.text;
+    return finalText;
   }
   if (finalResult.error) {
     return finalResult.error;
