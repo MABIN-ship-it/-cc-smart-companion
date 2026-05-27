@@ -7,302 +7,235 @@
 
 // ─── 模型注册表 ───────────────────────────────────────────
 const MODEL_REGISTRY = {
-  // Anthropic Messages API 协议族
-  'deepseek-chat': {
-    name: 'DeepSeek',
-    modelName: 'deepseek-chat',
-    modelOptions: ['deepseek-chat', 'deepseek-reasoner'],
-    endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
-    protocol: 'anthropic',
-    defaultMaxTokens: 4096,
-    contextWindow: 128000,
+  // ── DeepSeek ──
+  'deepseek-v4-pro': {
+    name: 'DeepSeek V4 Pro', endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
+    protocol: 'anthropic', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
     apiKeyLabel: 'DeepSeek API Key',
-    registerUrl: 'https://platform.deepseek.com/api_keys',
-    note: '',
+    description: '🏆 综合最强，编程/推理/创作全精通，支持图片分析，1M上下文',
   },
-  // OpenAI Chat Completions API 协议族
+  'deepseek-v4-flash': {
+    name: 'DeepSeek V4 Flash', endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
+    protocol: 'anthropic', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
+    apiKeyLabel: 'DeepSeek API Key',
+    description: '⚡ DeepSeek极速版，速度快价格低，日常对话首选',
+  },
+  'deepseek-chat': {
+    name: 'DeepSeek V3 (旧)', endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
+    protocol: 'anthropic', defaultMaxTokens: 4096, contextWindow: 128000,
+    apiKeyLabel: 'DeepSeek API Key',
+    description: '📦 DeepSeek V3经典版，即将退役，建议升级到V4',
+  },
+  // ── OpenAI ──
   'gpt-4o': {
-    name: 'OpenAI',
-    modelName: 'gpt-4o',
-    modelOptions: ['gpt-4o', 'gpt-4.1', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o3-mini'],
-    endpoint: 'https://api.openai.com/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 128000,
+    name: 'GPT-4o', endpoint: 'https://api.openai.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 128000, vision: true,
     apiKeyLabel: 'OpenAI API Key',
-    registerUrl: 'https://platform.openai.com/api-keys',
-    note: '',
+    description: '🌐 OpenAI旗舰，多模态理解强，图片/文字都能处理',
   },
   'gpt-4o-mini': {
-    name: 'GPT-4o Mini',
-    endpoint: 'https://api.openai.com/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 128000,
+    name: 'GPT-4o Mini', endpoint: 'https://api.openai.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 128000, vision: true,
     apiKeyLabel: 'OpenAI API Key',
-    registerUrl: 'https://platform.openai.com/api-keys',
-    note: '',
-    hidden: true,
+    description: '💰 GPT-4o的轻量版，便宜够用，适合简单任务',
   },
   'gpt-4.1': {
-    name: 'GPT-4.1',
-    endpoint: 'https://api.openai.com/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 1000000,
+    name: 'GPT-4.1', endpoint: 'https://api.openai.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 1000000,
     apiKeyLabel: 'OpenAI API Key',
-    registerUrl: 'https://platform.openai.com/api-keys',
-    note: '',
-    hidden: true,
+    description: '📚 OpenAI最新，100万超长上下文，适合读长文档',
+  },
+  // ── 通义千问 ──
+  'qwen3-max': {
+    name: '通义千问 Max', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 262144,
+    apiKeyLabel: '阿里云 API Key',
+    description: '🇨🇳 阿里千问旗舰，中文理解顶级，适合中文复杂任务',
   },
   'qwen-plus': {
-    name: '通义千问',
-    modelName: 'qwen-plus',
-    modelOptions: ['qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen-flash', 'qwen3-235b-a22b'],
-    endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
+    name: '通义千问 Plus', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1000000,
     apiKeyLabel: '阿里云 API Key',
-    registerUrl: 'https://dashscope.console.aliyun.com/apiKey',
-    note: '',
+    description: '⚖️ 千问均衡版，百万上下文，性价比之选',
   },
-  'glm-4': {
-    name: '智谱 GLM',
-    modelName: 'glm-4',
-    modelOptions: ['glm-4', 'glm-4-flash', 'glm-4-plus', 'glm-4v-plus'],
-    endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 128000,
-    apiKeyLabel: '智谱 API Key',
-    registerUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
-    note: '',
+  'qwen-flash': {
+    name: '通义千问 Flash', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1000000,
+    apiKeyLabel: '阿里云 API Key',
+    description: '🏃 千问极速版，速度最快，适合简单问答',
   },
-  'doubao-pro': {
-    name: '豆包',
-    modelName: 'doubao-pro-256k',
-    modelOptions: ['doubao-pro-256k', 'doubao-lite-128k', 'doubao-pro-32k', 'doubao-vision-pro-32k'],
-    endpoint: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 256000,
+  'qwen3-vl-plus': {
+    name: '通义千问 VL Plus', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 131072, vision: true,
+    apiKeyLabel: '阿里云 API Key',
+    description: '👁️ 千问视觉模型，图片理解能力强',
+  },
+  'qwq-plus': {
+    name: '通义千问 QwQ', endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 131072,
+    apiKeyLabel: '阿里云 API Key',
+    description: '🧠 千问推理专用，深度思考慢但准',
+  },
+  // ── 豆包 ──
+  'doubao-seed-2.0-pro': {
+    name: '豆包 Seed 2.0 Pro', endpoint: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 262144, vision: true,
     apiKeyLabel: '火山引擎 API Key',
-    registerUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
-    note: '',
+    description: '🔥 豆包旗舰，全模态支持，编程/图片/推理俱佳',
   },
-  'kimi': {
-    name: 'Kimi',
-    modelName: 'kimi-k2.6',
-    modelOptions: ['kimi-k2.6', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-    endpoint: 'https://api.moonshot.cn/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 256000,
+  'doubao-seed-2.0-lite': {
+    name: '豆包 Seed 2.0 Lite', endpoint: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 262144, vision: true,
+    apiKeyLabel: '火山引擎 API Key',
+    description: '🎯 豆包均衡版，性能好价格低，推荐日常使用',
+  },
+  'doubao-seed-1.6-flash': {
+    name: '豆包 Seed 1.6 Flash', endpoint: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 262144, vision: true,
+    apiKeyLabel: '火山引擎 API Key',
+    description: '💸 豆包最便宜的视觉模型，快且支持图片',
+  },
+  // ── 智谱 GLM ──
+  'glm-5': {
+    name: '智谱 GLM-5', endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 200000,
+    apiKeyLabel: '智谱 API Key',
+    description: '🤖 智谱旗舰Agent，自主工作能力强，适合复杂任务',
+  },
+  'glm-4.7': {
+    name: '智谱 GLM-4.7', endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 200000,
+    apiKeyLabel: '智谱 API Key',
+    description: '💻 智谱编程专精，写代码改bug最强',
+  },
+  'glm-4v-plus': {
+    name: '智谱 GLM-4V', endpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 128000, vision: true,
+    apiKeyLabel: '智谱 API Key',
+    description: '👁️ 智谱视觉模型，图片+文字理解',
+  },
+  // ── Kimi ──
+  'kimi-k2.6': {
+    name: 'Kimi K2.6', endpoint: 'https://api.moonshot.cn/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 256000, vision: true,
     apiKeyLabel: 'Kimi API Key',
-    registerUrl: 'https://platform.moonshot.cn/console/api-keys',
-    note: '256K上下文',
+    description: '📖 Kimi最新旗舰，256K上下文，多模态',
   },
-  'minimax': {
-    name: 'MiniMax',
-    modelName: 'MiniMax-M2.7',
-    modelOptions: ['MiniMax-M2.7', 'MiniMax-Text-01', 'abab7-chat'],
-    endpoint: 'https://api.minimax.chat/v1/text/chatcompletion_v2',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 245760,
-    apiKeyLabel: 'MiniMax API Key',
-    registerUrl: 'https://platform.minimax.io/user-center/basic-information/interface-key',
-    note: '最新旗舰',
+  'moonshot-v1-8k': {
+    name: 'Moonshot 8K', endpoint: 'https://api.moonshot.cn/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 8000,
+    apiKeyLabel: 'Kimi API Key',
+    description: '📝 Kimi经典版，8K短文本',
   },
-  'stepfun': {
-    name: '阶跃星辰',
-    modelName: 'step-3.5-flash',
-    modelOptions: ['step-3.5-flash', 'step-3-flash', 'step-2-16k', 'step-2v-16k'],
-    endpoint: 'https://api.stepfun.com/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
-    apiKeyLabel: '阶跃 API Key',
-    registerUrl: 'https://platform.stepfun.com/interface-key',
-    note: '主力模型',
-  },
-  'mimo': {
-    name: '小米 MiMo',
-    modelName: 'mimo-v2.5',
-    modelOptions: ['mimo-v2.5', 'mimo-v2.5-flash'],
-    endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
+  // ── 小米 MiMo ──
+  'mimo-v2.5-pro': {
+    name: '小米 MiMo V2.5 Pro', endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1100000, vision: true,
     apiKeyLabel: '小米MiMo API Key',
-    registerUrl: 'https://mimo.xiaomi.com/',
-    note: 'Key以tp-开头',
+    description: '🏅 小米旗舰，1.1M上下文，性能强劲',
   },
-  'baidu-ernie': {
-    name: '百度文心',
-    modelName: 'ernie-speed-128k',
-    modelOptions: ['ernie-speed-128k', 'ernie-speed-pro-128k', 'ernie-4.0-turbo-8k', 'ernie-4.5-8k', 'deepseek-v3', 'deepseek-r1'],
-    endpoint: 'https://qianfan.baidubce.com/v2/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 128000,
+  'mimo-v2.5': {
+    name: '小米 MiMo V2.5', endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1100000, vision: true,
+    apiKeyLabel: '小米MiMo API Key',
+    description: '🔓 小米开源版，MIT协议，可商用',
+  },
+  'mimo-v2-pro': {
+    name: '小米 MiMo V2 Pro', endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
+    apiKeyLabel: '小米MiMo API Key',
+    description: '💪 小米上代旗舰，编程市场占有率30%+',
+  },
+  'mimo-v2-omni': {
+    name: '小米 MiMo V2 Omni', endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 256000, vision: true,
+    apiKeyLabel: '小米MiMo API Key',
+    description: '🎨 小米全模态，图片+语音+文字原生融合',
+  },
+  'mimo-v2-flash': {
+    name: '小米 MiMo V2 Flash', endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 256000, vision: true,
+    apiKeyLabel: '小米MiMo API Key',
+    description: '⚡ 小米极速版，150 token/s，便宜好用',
+  },
+  // ── MiniMax ──
+  'minimax-m2.5': {
+    name: 'MiniMax M2.5', endpoint: 'https://api.minimax.chat/v1/text/chatcompletion_v2',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 205000,
+    apiKeyLabel: 'MiniMax API Key',
+    description: '🔧 MiniMax最新，Agent工作流优化',
+  },
+  // ── 阶跃星辰 ──
+  'step-3.5-flash': {
+    name: '阶跃 Step 3.5 Flash', endpoint: 'https://api.stepfun.com/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 256000,
+    apiKeyLabel: '阶跃 API Key',
+    description: '✨ 阶跃星辰旗舰，极速生成',
+  },
+  // ── 百度文心 ──
+  'ernie-4.5': {
+    name: '百度文心 4.5', endpoint: 'https://qianfan.baidubce.com/v2/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 128000,
     apiKeyLabel: '百度千帆 API Key',
-    registerUrl: 'https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application',
-    note: '需appid',
-    extraHeaderFields: ['appid'],
+    description: '🏯 百度文心，中文场景深耕',
   },
-  'bailian': {
-    name: '阿里百炼',
-    modelName: '',
-    modelOptions: ['qwen3-235b-a22b', 'qwen-max', 'qwen-plus', 'deepseek-v3', 'deepseek-r1'],
-    endpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
-    apiKeyLabel: '阿里云 API Key',
-    registerUrl: 'https://bailian.console.aliyun.com/',
-    note: '聚合平台',
-  },
-  'hunyuan': {
-    name: '腾讯混元',
-    modelName: '',
-    modelOptions: ['hunyuan-turbo', 'hunyuan-pro', 'hunyuan-standard', 'hunyuan-lite', 'deepseek-v3', 'deepseek-r1'],
-    endpoint: 'https://api.hunyuan.cloud.tencent.com/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
-    apiKeyLabel: '腾讯混元 API Key',
-    registerUrl: 'https://console.cloud.tencent.com/hunyuan',
-    note: '聚合平台',
-  },
-  'siliconflow': {
-    name: 'SiliconFlow',
-    modelName: '',
-    modelOptions: ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen3-235B-A22B', 'Pro/Llama-4-Maverick', 'Pro/Qwen-Qwen3-235B-A22B-Thinking'],
-    endpoint: 'https://api.siliconflow.cn/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
+  // ── 聚合平台 ──
+  'siliconflow-deepseek-v3': {
+    name: 'SiliconFlow DeepSeek V3', endpoint: 'https://api.siliconflow.cn/v1/chat/completions',
+    protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 131072,
     apiKeyLabel: 'SiliconFlow API Key',
-    registerUrl: 'https://cloud.siliconflow.cn/account/ak',
-    note: '聚合平台',
-  },
-  'modelscope': {
-    name: 'ModelScope',
-    modelName: '',
-    modelOptions: ['Qwen/Qwen3-235B-A22B', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/QwQ-32B'],
-    endpoint: 'https://api-inference.modelscope.cn/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
-    apiKeyLabel: 'ModelScope API Key',
-    registerUrl: 'https://modelscope.cn/my/overview',
-    note: '聚合平台',
-  },
-  'aihubmix': {
-    name: 'AiHubMix',
-    modelName: '',
-    modelOptions: ['deepseek-v3', 'deepseek-r1', 'gpt-4o', 'claude-sonnet-4-6', 'gemini-2.5-pro'],
-    endpoint: 'https://aihubmix.com/v1/chat/completions',
-    protocol: 'openai',
-    defaultMaxTokens: 4096,
-    contextWindow: 131072,
-    apiKeyLabel: 'AiHubMix API Key',
-    registerUrl: 'https://aihubmix.com/',
-    note: '聚合平台',
+    description: '🌍 SiliconFlow聚合，部署在硅谷，延迟低',
   },
 };
 
 // ─── 模型管理 ─────────────────────────────────────────────
 
-/** 获取所有已注册模型（含自定义供应商），hasKey的排前面，hidden条目不显示 */
+/** 获取所有已注册模型 */
 export function getAvailableModels() {
-  const builtin = Object.entries(MODEL_REGISTRY)
-    .filter(([, cfg]) => !cfg.hidden)
-    .map(([id, cfg]) => ({
+  return Object.entries(MODEL_REGISTRY).map(([id, cfg]) => ({
     id,
     name: cfg.name,
     protocol: cfg.protocol,
     contextWindow: cfg.contextWindow,
     apiKeyLabel: cfg.apiKeyLabel,
-    registerUrl: cfg.registerUrl || '',
-    note: cfg.note || '',
-    modelName: cfg.modelName || getUserModelName(id) || '',
-    modelOptions: cfg.modelOptions || (cfg.modelName ? [cfg.modelName] : []),
-    extraHeaderFields: cfg.extraHeaderFields || [],
-    isCustom: false,
-    hasKey: hasApiKey(id),
+    vision: !!cfg.vision,
+    description: cfg.description || '',
   }));
-
-  const custom = getCustomProviders().map(p => ({
-    id: p.name,
-    name: p.name,
-    protocol: 'openai',
-    contextWindow: 131072,
-    apiKeyLabel: p.name + ' API Key',
-    registerUrl: '',
-    note: '自定义',
-    modelName: p.modelName || '',
-    extraHeaderFields: [],
-    isCustom: true,
-    hasKey: !!getApiKey(p.name),
-    endpoint: p.endpoint,
-  }));
-
-  return [...builtin, ...custom].sort((a, b) => (b.hasKey ? 1 : 0) - (a.hasKey ? 1 : 0));
 }
 
-/** 获取模型配置（含自定义供应商） */
+/** 获取模型配置 */
 export function getModelConfig(modelId) {
   const cfg = MODEL_REGISTRY[modelId];
-  if (cfg) return cfg;
-  const custom = getCustomProviders().find(p => p.name === modelId);
-  if (custom) {
-    return {
-      name: custom.name,
-      endpoint: custom.endpoint,
-      protocol: 'openai',
-      defaultMaxTokens: 4096,
-      contextWindow: 131072,
-      apiKeyLabel: custom.name + ' API Key',
-      isCustom: true,
-    };
-  }
-  throw new Error(`未注册的模型: ${modelId}`);
+  if (!cfg) throw new Error(`未注册的模型: ${modelId}`);
+  return cfg;
 }
 
 /** 获取用户当前选择的模型ID */
 export function getCurrentModel() {
   try {
-    return localStorage.getItem('cc_current_model') || 'deepseek-chat';
+    return localStorage.getItem('cc_current_model') || 'deepseek-v4-pro';
   } catch {
-    return 'deepseek-chat';
+    return 'deepseek-v4-pro';
   }
+}
+
+/** 判断模型是否支持视觉/图片输入 */
+export function isVisionModel(modelId) {
+  return !!MODEL_REGISTRY[modelId]?.vision;
 }
 
 /** 设置用户当前选择的模型ID */
 export function setCurrentModel(modelId) {
-  if (!MODEL_REGISTRY[modelId] && !getCustomProviders().some(p => p.name === modelId)) {
-    throw new Error(`未知模型: ${modelId}`);
-  }
+  if (!MODEL_REGISTRY[modelId]) throw new Error(`未知模型: ${modelId}`);
   try {
     localStorage.setItem('cc_current_model', modelId);
   } catch {}
 }
 
-/** 检查模型是否已配置Key（仅检查模型专属key，不回退通用key） */
-export function hasApiKey(modelId) {
-  const keyName = `cc_api_key_${modelId}`;
-  try {
-    return !!localStorage.getItem(keyName);
-  } catch {
-    return false;
-  }
-}
-
-/** 获取用户的API Key（支持多模型独立Key，回退到通用key用于实际调用） */
+/** 获取用户的API Key（支持多模型独立Key） */
 export function getApiKey(modelId) {
+  const cfg = MODEL_REGISTRY[modelId];
+  if (!cfg) return null;
   const keyName = `cc_api_key_${modelId}`;
   try {
     return localStorage.getItem(keyName) || localStorage.getItem('cc_api_key') || null;
@@ -319,79 +252,12 @@ export function setApiKey(modelId, key) {
   } catch {}
 }
 
-// ─── 自定义供应商 ─────────────────────────────────────────
-
-export function getCustomProviders() {
-  try {
-    return JSON.parse(localStorage.getItem('cc_custom_providers') || '[]');
-  } catch { return []; }
-}
-
-export function saveCustomProvider(provider) {
-  const providers = getCustomProviders();
-  const idx = providers.findIndex(p => p.name === provider.name);
-  if (idx >= 0) providers[idx] = provider;
-  else providers.push(provider);
-  localStorage.setItem('cc_custom_providers', JSON.stringify(providers));
-}
-
-export function deleteCustomProvider(name) {
-  const providers = getCustomProviders().filter(p => p.name !== name);
-  localStorage.setItem('cc_custom_providers', JSON.stringify(providers));
-}
-
-// ─── 模型名映射 ─────────────────────────────────────────
-
-export function getUserModelName(modelId) {
-  try {
-    const names = JSON.parse(localStorage.getItem('cc_model_names') || '{}');
-    return names[modelId] || '';
-  } catch { return ''; }
-}
-
-export function setUserModelName(modelId, modelName) {
-  try {
-    const names = JSON.parse(localStorage.getItem('cc_model_names') || '{}');
-    if (modelName) names[modelId] = modelName;
-    else delete names[modelId];
-    localStorage.setItem('cc_model_names', JSON.stringify(names));
-  } catch {}
-}
-
-// ─── 额外请求头（如百度appid） ──────────────────────────
-
-export function getExtraHeader(modelId, field) {
-  try {
-    const headers = JSON.parse(localStorage.getItem('cc_extra_headers') || '{}');
-    return (headers[modelId] || {})[field] || '';
-  } catch { return ''; }
-}
-
-export function setExtraHeader(modelId, field, value) {
-  try {
-    const headers = JSON.parse(localStorage.getItem('cc_extra_headers') || '{}');
-    if (!headers[modelId]) headers[modelId] = {};
-    if (value) headers[modelId][field] = value;
-    else delete headers[modelId][field];
-    localStorage.setItem('cc_extra_headers', JSON.stringify(headers));
-  } catch {}
-}
-
-/** 解析实际使用的模型名：cfg.modelName > 用户覆盖 > modelId fallback */
-function resolveModelName(model, modelCfg) {
-  if (modelCfg.modelName) return modelCfg.modelName;
-  const userOverride = getUserModelName(model);
-  if (userOverride) return userOverride;
-  return model;
-}
-
 // ─── 协议转换核心 ─────────────────────────────────────────
 
 /**
  * 将 CC 内部消息格式转换为 Anthropic Messages API 格式
  */
 function toAnthropicFormat({ model, modelCfg, messages, systemPrompt, tools, maxTokens, temperature }) {
-  const actualModel = resolveModelName(model, modelCfg);
   return {
     url: modelCfg.endpoint,
     headers: {
@@ -400,7 +266,7 @@ function toAnthropicFormat({ model, modelCfg, messages, systemPrompt, tools, max
       'anthropic-version': '2023-06-01',
     },
     body: {
-      model: actualModel,
+      model,
       max_tokens: maxTokens || modelCfg.defaultMaxTokens,
       temperature: temperature ?? 0.7,
       system: systemPrompt,
@@ -414,7 +280,6 @@ function toAnthropicFormat({ model, modelCfg, messages, systemPrompt, tools, max
  * 将 CC 内部消息格式转换为 OpenAI Chat Completions API 格式
  */
 function toOpenAIFormat({ model, modelCfg, messages, systemPrompt, tools, maxTokens, temperature }) {
-  const actualModel = resolveModelName(model, modelCfg);
   // OpenAI 将 system prompt 作为消息数组的第一条
   const openaiMessages = [];
   if (systemPrompt) {
@@ -424,15 +289,37 @@ function toOpenAIFormat({ model, modelCfg, messages, systemPrompt, tools, maxTok
   for (const msg of messages) {
     if (msg.role === 'user') {
       if (Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === 'tool_result') {
-            openaiMessages.push({
-              role: 'tool',
-              tool_call_id: block.tool_use_id,
-              content: typeof block.content === 'string'
-                ? block.content
-                : JSON.stringify(block.content),
-            });
+        // 检查是否是工具结果（tool_result blocks）
+        const hasToolResults = msg.content.some(b => b.type === 'tool_result');
+        if (hasToolResults) {
+          for (const block of msg.content) {
+            if (block.type === 'tool_result') {
+              openaiMessages.push({
+                role: 'tool',
+                tool_call_id: block.tool_use_id,
+                content: typeof block.content === 'string'
+                  ? block.content
+                  : JSON.stringify(block.content),
+              });
+            }
+          }
+        } else {
+          // 非工具结果：可能是图片+文本混合内容 → OpenAI vision 格式
+          const parts = [];
+          for (const block of msg.content) {
+            if (block.type === 'image') {
+              parts.push({
+                type: 'image_url',
+                image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` }
+              });
+            } else if (block.type === 'image_url') {
+              parts.push(block);
+            } else if (block.type === 'text') {
+              parts.push(block);
+            }
+          }
+          if (parts.length > 0) {
+            openaiMessages.push({ role: 'user', content: parts });
           }
         }
       } else {
@@ -481,7 +368,7 @@ function toOpenAIFormat({ model, modelCfg, messages, systemPrompt, tools, maxTok
       'Authorization': `Bearer ${getApiKey(model)}`,
     },
     body: {
-      model: actualModel,
+      model,
       max_tokens: maxTokens || modelCfg.defaultMaxTokens,
       temperature: temperature ?? 0.7,
       messages: openaiMessages,
@@ -513,15 +400,11 @@ function parseAnthropicResponse(data) {
   }
 
   const textParts = [];
-  const thinkingParts = [];
   const toolUses = [];
 
   for (const block of content) {
     if (block.type === 'text' && block.text) {
       textParts.push(block.text);
-    }
-    if (block.type === 'thinking' && block.thinking) {
-      thinkingParts.push(block.thinking);
     }
     if (block.type === 'tool_use') {
       toolUses.push({
@@ -534,7 +417,6 @@ function parseAnthropicResponse(data) {
 
   return {
     text: textParts.join('').trim(),
-    thinking: thinkingParts.join('').trim() || undefined,
     toolUses,
     stopReason: data.stop_reason || null,
     usage: data.usage || null,
@@ -556,7 +438,6 @@ function parseOpenAIResponse(data) {
 
   const message = choice.message || {};
   const text = message.content || '';
-  const thinking = message.reasoning_content || undefined;
   const toolUses = [];
 
   if (message.tool_calls?.length) {
@@ -564,14 +445,7 @@ function parseOpenAIResponse(data) {
       let input = {};
       try {
         input = JSON.parse(tc.function.arguments || '{}');
-      } catch (e) {
-        try {
-          const fixed = (tc.function.arguments || '{}').replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
-          input = JSON.parse(fixed);
-        } catch (e2) {
-          console.error('[modelAdapter] JSON.parse failed for tool call:', e2.message, 'args:', tc.function.arguments?.slice(-200));
-        }
-      }
+      } catch {}
       toolUses.push({
         id: tc.id,
         name: tc.function.name,
@@ -582,7 +456,6 @@ function parseOpenAIResponse(data) {
 
   return {
     text: text.trim(),
-    thinking,
     toolUses,
     stopReason: choice.finish_reason || null,
     usage: data.usage || null,
@@ -709,7 +582,6 @@ export async function* sendModelRequestStream({
 
   const contentBlocks = [];
   let accumulatedText = '';
-  let accumulatedThinking = '';
 
   try {
     for await (const frame of parser) {
@@ -723,26 +595,14 @@ export async function* sendModelRequestStream({
         switch (frame.event) {
           case 'content_block_start': {
             const block = frame.data?.content_block;
-            if (block) {
-              contentBlocks[frame.data?.index || 0] = block;
-            }
+            if (block) contentBlocks.push(block);
             break;
           }
           case 'content_block_delta': {
             const delta = frame.data?.delta;
-            const idx = frame.data?.index || 0;
-            const blockType = contentBlocks[idx]?.type;
             if (delta?.type === 'text_delta' && delta.text) {
-              if (blockType === 'thinking') {
-                accumulatedThinking += delta.text;
-                yield { type: 'think', text: delta.text, accumulated: accumulatedThinking };
-              } else {
-                accumulatedText += delta.text;
-                yield { type: 'text', text: delta.text, accumulated: accumulatedText };
-              }
-            } else if (delta?.type === 'thinking_delta' && delta.thinking) {
-              accumulatedThinking += delta.thinking;
-              yield { type: 'think', text: delta.thinking, accumulated: accumulatedThinking };
+              accumulatedText += delta.text;
+              yield { type: 'text', text: delta.text, accumulated: accumulatedText };
             } else if (delta?.type === 'input_json_delta' && delta.partial_json) {
               // 累积 tool_use 参数的 JSON 片段
               const idx = frame.data?.index || 0;
@@ -753,14 +613,7 @@ export async function* sendModelRequestStream({
               blk._rawArgs = (blk._rawArgs || '') + delta.partial_json;
               try {
                 blk.input = JSON.parse(blk._rawArgs);
-              } catch {
-                try {
-                  const fixed = blk._rawArgs.replace(/\\(?!["\\/bfnrtu])/g, '\\\\');
-                  blk.input = JSON.parse(fixed);
-                } catch {
-                  // 流式传输中 JSON 片段不完整属于正常现象，content_block_stop 时才完整
-                }
-              }
+              } catch {}
             }
             break;
           }
@@ -791,11 +644,6 @@ export async function* sendModelRequestStream({
           if (delta?.content) {
             accumulatedText += delta.content;
             yield { type: 'text', text: delta.content, accumulated: accumulatedText };
-          }
-
-          if (delta?.reasoning_content) {
-            accumulatedThinking += delta.reasoning_content;
-            yield { type: 'think', text: delta.reasoning_content, accumulated: accumulatedThinking };
           }
 
           if (delta?.tool_calls?.length) {

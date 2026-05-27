@@ -67,7 +67,7 @@ export async function sendMessage(userMessage, state, onProgress, signal) {
     // 对话模式（默认）：先尝试子任务委托，回退到ReAct
     const { shouldDelegate } = analyzeComplexity(userMessage);
     if (shouldDelegate) {
-      onProgress?.({ type: 'status', data: '检测到复杂任务，正在分析项目上下文...' });
+      onProgress?.({ type: 'think', data: '检测到复杂任务，正在分析项目上下文...' });
       const delegationContext = await buildDelegationContext(state);
       const delegationResult = await delegateSubtasks(userMessage, delegationContext, onProgress, signal);
       if (delegationResult) {
@@ -136,7 +136,20 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal) 
   const recentHistory = (state.messages || []).slice(-20);
   for (const m of recentHistory) {
     if (m.role === 'user' || m.role === 'assistant') {
-      messages.push({ role: m.role, content: m.content });
+      if (m.role === 'user' && m.images?.length > 0) {
+        const blocks = [];
+        for (const img of m.images) {
+          const match = img.match(/^data:(image\/\w+);base64,(.+)$/);
+          if (match) {
+            blocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
+          }
+        }
+        const textContent = typeof m.content === 'string' ? m.content : '';
+        if (textContent) blocks.push({ type: 'text', text: textContent });
+        messages.push({ role: 'user', content: blocks });
+      } else {
+        messages.push({ role: m.role, content: m.content });
+      }
     }
   }
   messages.push({ role: 'user', content: userMessage });
@@ -161,8 +174,6 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal) 
       if (frame.type === 'text') {
         fullText = frame.accumulated;
         onProgress?.({ type: 'text', data: fullText });
-      } else if (frame.type === 'think') {
-        onProgress?.({ type: 'think', data: frame.accumulated });
       } else if (frame.type === 'error') {
         throw new Error(frame.error);
       } else if (frame.type === 'done') {

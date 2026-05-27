@@ -45,8 +45,6 @@ async function streamingRequest({ model, messages, systemPrompt, tools, onProgre
       if (frame.type === 'text') {
         fullText = frame.accumulated;
         onProgress?.({ type: 'text', data: fullText });
-      } else if (frame.type === 'think') {
-        onProgress?.({ type: 'think', data: frame.accumulated });
       } else if (frame.type === 'tool_use') {
         toolUses.push(frame.toolUse);
       } else if (frame.type === 'done') {
@@ -80,10 +78,6 @@ async function nonStreamingRequest({ model, messages, systemPrompt, tools, onPro
 
     if (result.error) {
       return { error: result.error };
-    }
-
-    if (result.thinking) {
-      onProgress?.({ type: 'think', data: result.thinking });
     }
 
     if (result.text) {
@@ -121,19 +115,36 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
 
   for (const m of recentHistory) {
     if (m.role === 'user' || m.role === 'assistant') {
-      // 防御：确保 content 始终是字符串，防止数组格式泄漏到 API
-      const content = typeof m.content === 'string'
-        ? m.content
-        : (Array.isArray(m.content)
-          ? m.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
-          : String(m.content));
-      messages.push({ role: m.role, content });
+      // 如果是带图片的用户消息，构建 content 数组（含 image blocks）
+      if (m.role === 'user' && m.images?.length > 0) {
+        const blocks = [];
+        for (const img of m.images) {
+          const match = img.match(/^data:(image\/\w+);base64,(.+)$/);
+          if (match) {
+            blocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
+          }
+        }
+        const textContent = typeof m.content === 'string' ? m.content : '';
+        if (textContent) blocks.push({ type: 'text', text: textContent });
+        messages.push({ role: 'user', content: blocks });
+      } else {
+        // 防御：确保 content 始终是字符串，防止数组格式泄漏到 API
+        const content = typeof m.content === 'string'
+          ? m.content
+          : (Array.isArray(m.content)
+            ? m.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+            : String(m.content));
+        messages.push({ role: m.role, content });
+      }
     }
   }
 
   // 避免重复添加：如果最后一条消息已经是相同的用户消息，不再追加
   const lastMsg = messages[messages.length - 1];
-  if (lastMsg?.role === 'user' && lastMsg.content === userMessage) {
+  const lastText = Array.isArray(lastMsg?.content)
+    ? lastMsg.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+    : lastMsg?.content;
+  if (lastMsg?.role === 'user' && lastText === userMessage) {
     // userMessage 已在 state.messages 中存在，无需重复
   } else {
     messages.push({ role: 'user', content: userMessage });
@@ -145,16 +156,6 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
   let conversation = cleanedMessages;
   let iteration = 0;
   let finalResponse = '';
-  let roundPrefix = ''; // 跨轮累积文本
-
-  // 包装 onProgress：跨轮文本带上历史前缀
-  const wrapProgress = (event) => {
-    if (event.type === 'text' && roundPrefix) {
-      onProgress?.({ type: 'text', data: roundPrefix + '\n\n' + event.data });
-    } else {
-      onProgress?.(event);
-    }
-  };
 
   // ── ReAct循环 ──────────────────────────────────────────
   while (iteration < MAX_ITERATIONS) {
@@ -162,13 +163,13 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     iteration++;
 
     onProgress?.({
-      type: 'status',
+      type: 'think',
       data: iteration === 1 ? '正在分析你的请求...' : '正在继续处理...',
     });
 
     // ── 压缩检查 ────────────────────────────────────────
     if (shouldCompact(conversation, systemPrompt, model)) {
-      onProgress?.({ type: 'status', data: '对话较长，正在整理上下文...' });
+      onProgress?.({ type: 'think', data: '对话较长，正在整理上下文...' });
       conversation = smartTruncateMessages(conversation, systemPrompt, model);
     }
 
@@ -188,19 +189,19 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       messages: conversation,
       systemPrompt,
       tools,
-      onProgress: wrapProgress,
+      onProgress,
       signal: fetchSignal,
     });
 
     // 流式400时回退到非流式（DeepSeek Anthropic兼容层已知问题）
     if (result.error && result.error.includes('400')) {
-      onProgress?.({ type: 'status', data: '正在切换通信方式...' });
+      onProgress?.({ type: 'think', data: '正在切换通信方式...' });
       result = await nonStreamingRequest({
         model,
         messages: conversation,
         systemPrompt,
         tools,
-        onProgress: wrapProgress,
+        onProgress,
         signal: fetchSignal,
       });
     }
@@ -213,9 +214,8 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     // ── 没有tool_use：返回文本给用户 ──────────────────────
     if (!result.toolUses || result.toolUses.length === 0) {
       if (result.text) {
-        const finalText = roundPrefix ? roundPrefix + '\n\n' + result.text : result.text;
-        onProgress?.({ type: 'text', data: finalText });
-        return finalText;
+        onProgress?.({ type: 'text', data: result.text });
+        return result.text;
       }
       // 空响应：让模型继续
       conversation.push({ role: 'assistant', content: '请继续。' });
@@ -314,11 +314,6 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       conversation.push(buildToolResultsMessage(allToolResults));
     }
 
-    // 保存本轮文本到跨轮前缀，防止下一轮覆盖
-    if (result.text) {
-      roundPrefix = roundPrefix ? roundPrefix + '\n\n' + result.text : result.text;
-    }
-
     // 继续循环
   }
 
@@ -338,13 +333,12 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     messages: conversation,
     systemPrompt,
     tools: [],
-    onProgress: wrapProgress,
+    onProgress,
     signal: fetchSignal2,
   });
 
   if (finalResult.text) {
-    const finalText = roundPrefix ? roundPrefix + '\n\n' + finalResult.text : finalResult.text;
-    return finalText;
+    return finalResult.text;
   }
   if (finalResult.error) {
     return finalResult.error;
