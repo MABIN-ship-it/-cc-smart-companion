@@ -6,9 +6,9 @@ import { extractProfileDiff, applyDiff } from '../services/userProfile';
 import { detectUserFeedback, addLesson } from '../services/lessonsLearned';
 import { addFavorite, addFeedback, addReport } from '../services/interactions';
 import { isSpeechSupported, isMediaRecorderSupported, startListening, speakText, stopListening, startVoiceRecording, stopVoiceRecording, cancelVoiceRecording, transcribeAudio } from '../services/speech';
+import { startProactiveEngine } from '../services/proactive';
 import { startScheduledScan, stopScheduledScan } from '../services/feishuMonitor';
 import { dispatchFeishuMessage, extractTextFromEvent, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
-import { startProactiveEngine } from '../services/proactive';
 import { createExpressionEngine } from '../services/expressionEngine';
 import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
@@ -31,13 +31,13 @@ import CharacterScene from './CharacterScene';
 import AngelDevilOverlay from './AngelDevilOverlay';
 import StageBackground from './StageBackground';
 import ChatBubbleLayer from './ChatBubbleLayer';
-import ToolboxPanel from './ToolboxPanel';
-import ProactivePrompt from './ProactivePrompt';
 import InputBar from './InputBar';
 import ToolIcon, {
   ApiKeyIcon, PersonalityIcon, VoiceIcon, VoiceCloneIcon,
   MemoryIcon, FolderIcon, ChatHistoryIcon, KnowledgeGraphIcon, ToolboxIcon,
 } from './ToolIcon';
+import ToolboxPanel from './ToolboxPanel';
+import ProactivePrompt from './ProactivePrompt';
 
 export default function ChatInterface() {
   const { state, dispatch } = useApp();
@@ -45,9 +45,15 @@ export default function ChatInterface() {
   const [listening, setListening] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [thinkingText, setThinkingText] = useState('');
+  const thinkingTextRef = useRef('');
   const [showApiModal, setShowApiModal] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(getCurrentModel());
+  const [modelNameInput, setModelNameInput] = useState('');
+  const [showModelNameInput, setShowModelNameInput] = useState(false);
+  const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customForm, setCustomForm] = useState({ name: '', endpoint: '', protocol: 'openai', apiKey: '' });
   const [toolSteps, setToolSteps] = useState([]);
   const [streamingText, setStreamingText] = useState('');
   const [animParams, setAnimParams] = useState({});
@@ -67,25 +73,18 @@ export default function ChatInterface() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [extraFieldValues, setExtraFieldValues] = useState({});
-  const [showCustomForm, setShowCustomForm] = useState(false);
-  const [apiSearch, setApiSearch] = useState('');
-  const [modelNameInput, setModelNameInput] = useState('');
-  const [showModelNameInput, setShowModelNameInput] = useState(false);
-  const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
-  const [customForm, setCustomForm] = useState({ name: '', endpoint: '', protocol: 'openai', apiKey: '' });
   const wasOfflineRef = useRef(false);
-  const thinkingTextRef = useRef('');
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const apiKeyInputRef = useRef(null);
   const abortRef = useRef(null);
   const stateRef = useRef(state);
-  const feishuReplyRef = useRef(null);
-  const processUserMessageRef = useRef(null);
   const engineRef = useRef(null);
   const emotionRef = useRef(null);
   const presenceRef = useRef(null);
   const animFrameRef = useRef(0);
+  const feishuReplyRef = useRef(null); // { type: 'reply', eventData } | { type: 'chat', chatId }
+  const processUserMessageRef = useRef(null);
   stateRef.current = state;
 
   // Init engines
@@ -289,24 +288,6 @@ export default function ChatInterface() {
     return remove;
   }, []);
 
-
-  const handleDownloadUpdate = async () => {
-    setUpdateStatus('downloading');
-    setUpdateProgress(0);
-    try {
-      await window.electronAPI.downloadUpdate();
-    } catch {
-      setUpdateStatus('error');
-    }
-  };
-
-  const handleInstallUpdate = () => {
-    window.electronAPI.installUpdate();
-  };
-
-  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages, toolSteps]);
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
   // ─── 启动时自动连接飞书 ──────────────────────────────
   useEffect(() => {
     if (state.feishuStatus === 'connected' || state.feishuStatus === 'connecting') return;
@@ -324,6 +305,21 @@ export default function ChatInterface() {
         dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
       });
     }
+  }, []);
+
+  // ─── 飞书WS状态监听（独立于连接状态，确保connecting阶段也能收到推送）───
+  useEffect(() => {
+    if (!window.electronAPI?.onFeishuStatusChange) return;
+    const unsub = window.electronAPI.onFeishuStatusChange((status) => {
+      if (status.event === 'ready' || status.event === 'reconnected') {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connected' });
+      } else if (status.event === 'reconnecting') {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connecting' });
+      } else if (status.event === 'error') {
+        if (!status.running) dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
+      }
+    });
+    return unsub;
   }, []);
 
   // ─── 飞书监测引擎（消息互通+任务检测+定时扫描） ──────
@@ -394,7 +390,6 @@ export default function ChatInterface() {
     };
   }, [state.feishuStatus]);
 
-
   // 监听AI响应 → 转发到飞书
   useEffect(() => {
     if (!feishuReplyRef.current || state.messages.length === 0) return;
@@ -416,23 +411,22 @@ export default function ChatInterface() {
     })();
   }, [state.messages]);
 
+  const handleDownloadUpdate = async () => {
+    setUpdateStatus('downloading');
+    setUpdateProgress(0);
+    try {
+      await window.electronAPI.downloadUpdate();
+    } catch {
+      setUpdateStatus('error');
+    }
+  };
 
-  // ─── 飞书WS状态监听（独立于连接状态，确保connecting阶段也能收到推送）───
-  useEffect(() => {
-    if (!window.electronAPI?.onFeishuStatusChange) return;
-    const unsub = window.electronAPI.onFeishuStatusChange((status) => {
-      if (status.event === 'ready' || status.event === 'reconnected') {
-        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connected' });
-      } else if (status.event === 'reconnecting') {
-        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connecting' });
-      } else if (status.event === 'error') {
-        if (!status.running) dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
-      }
-    });
-    return unsub;
-  }, []);
+  const handleInstallUpdate = () => {
+    window.electronAPI.installUpdate();
+  };
 
-
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages, toolSteps]);
+  useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { if (showApiModal) apiKeyInputRef.current?.focus(); }, [showApiModal]);
 
   const handleStop = useCallback(() => {
@@ -442,6 +436,8 @@ export default function ChatInterface() {
     }
     dispatch({ type: 'SET_PROCESSING', payload: false });
     setThinking(false);
+    setThinkingText('');
+    thinkingTextRef.current = '';
     setToolSteps([]);
     setStreamingText('');
     setAngelDevil(null);
@@ -480,7 +476,8 @@ export default function ChatInterface() {
       dispatch({ type: 'NEW_SESSION', payload: text });
     }
     dispatch({ type: 'SET_PROCESSING', payload: true });
-    setThinking(true);
+    setThinkingText('');
+    thinkingTextRef.current = '';
     engineRef.current?.onMessageSent();
     presenceRef.current?.onActivity();
 
@@ -533,21 +530,20 @@ export default function ChatInterface() {
       }
     };
 
+    const isDup = (a, b) => {
+      if (!a || !b || a.length < 50) return false;
+      const sa = a.slice(0, 200), sb = b.slice(0, 200);
+      return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
+    };
+
     try {
       const response = await sendMessage(text, s, onProgress, controller.signal);
       setStreamingText('');
 
-      const isDup = (a, b) => {
-        if (!a || !b || a.length < 50) return false;
-        const sa = a.slice(0, 200), sb = b.slice(0, 200);
-        return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
-      };
+      if (controller.signal.aborted) return;
 
       const rawThinking = thinkingTextRef.current;
       const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
-
-
-      if (controller.signal.aborted) return;
 
       const isPlanOutput = response.includes('<!--PLAN_OUTPUT_START-->');
       if (isPlanOutput) {
@@ -557,20 +553,20 @@ export default function ChatInterface() {
           .trim();
         setPlanContent(cleanContent);
         setPlanPanelOpen(true);
-        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: '📋 方案已生成，请在右侧面板查看详情。', type: 'plan', thinkingText: finalThinking } });
+        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: '📋 方案已生成，请在右侧面板查看详情。', type: 'plan' } });
       } else if (collectedSteps.length > 0) {
         dispatch({
           type: 'ADD_MESSAGE',
           payload: {
             role: 'assistant',
             content: response,
-            thinkingText: finalThinking,
             type: 'tool_response',
             toolSteps: [...collectedSteps],
+            thinkingText: finalThinking,
           },
         });
       } else {
-        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response } });
+        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, thinkingText: finalThinking } });
       }
 
       if (/太好了|很棒|不错|谢谢|感谢|搞定|完成|成功/.test(response.slice(0, 100))) {
@@ -585,6 +581,8 @@ export default function ChatInterface() {
       const lastAiMsg = [...s.messages].reverse().find(m => m.role === 'assistant');
       const feedback = detectUserFeedback(text, lastAiMsg?.content || '');
       if (feedback) addLesson(feedback);
+
+      try { getKnowledgeSystem()?.onConversationTurn(text, response); } catch {}
 
       if (s.voiceEnabled) speakText(response.slice(0, 200));
       engineRef.current?.onResponseReceived();
@@ -624,6 +622,8 @@ export default function ChatInterface() {
           const feedback2 = detectUserFeedback(text, lastAiMsg2?.content || '');
           if (feedback2) addLesson(feedback2);
 
+          try { getKnowledgeSystem()?.onConversationTurn(text, retryRes); } catch {}
+
           return;
         } catch (retryErr) {
           if (retryErr.name === 'AbortError') return;
@@ -650,8 +650,8 @@ export default function ChatInterface() {
       inputRef.current?.focus();
     }
   }, []);
-  processUserMessageRef.current = processUserMessage;
 
+  processUserMessageRef.current = processUserMessage;
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -672,7 +672,8 @@ export default function ChatInterface() {
 
     dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: execMsg } });
     dispatch({ type: 'SET_PROCESSING', payload: true });
-    setThinking(true);
+    setThinkingText('');
+    thinkingTextRef.current = '';
     engineRef.current?.onMessageSent();
     presenceRef.current?.onActivity();
 
@@ -691,23 +692,23 @@ export default function ChatInterface() {
       }
     };
 
+    const isDup = (a, b) => {
+      if (!a || !b || a.length < 50) return false;
+      const sa = a.slice(0, 200), sb = b.slice(0, 200);
+      return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
+    };
+
     (async () => {
       try {
         const response = await sendMessage(execMsg, s, onProgress, controller.signal);
         setStreamingText('');
-        const isDup = (a, b) => {
-          if (!a || !b || a.length < 50) return false;
-          const sa = a.slice(0, 200), sb = b.slice(0, 200);
-          return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
-        };
-        const rawThinking = thinkingTextRef.current;
-        const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
-
         if (controller.signal.aborted) return;
+        const rawThinking = thinkingTextRef.current;
+      const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
         dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, thinkingText: finalThinking } });
+        try { getKnowledgeSystem()?.onConversationTurn(execMsg, response); } catch {}
         if (s.voiceEnabled) speakText(response.slice(0, 200));
         engineRef.current?.onResponseReceived();
-          try { getKnowledgeSystem()?.onConversationTurn(execMsg, response); } catch {}
       } catch (err) {
         if (err.name === 'AbortError') return;
         dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: categorizeError(err), type: 'system' } });
@@ -723,22 +724,15 @@ export default function ChatInterface() {
   }, []);
 
   const handleProjectFolder = useCallback(async () => {
-    if (state.currentProject) {
-      window.electronAPI?.openFolder(state.currentProject);
-      // 重新分析项目
-      analyzeProject(state.currentProject);
-    } else {
-      try {
-        const folderPath = await window.electronAPI?.selectFolder();
-        if (folderPath) {
-          dispatch({ type: 'SET_CURRENT_PROJECT', payload: folderPath });
-          setWorkspaceContext(folderPath);
-          // 自动分析项目结构
-          analyzeProject(folderPath);
-        }
-      } catch (e) {
-        console.error('项目文件夹选择失败:', e);
+    try {
+      const folderPath = await window.electronAPI?.selectFolder();
+      if (folderPath) {
+        dispatch({ type: 'SET_CURRENT_PROJECT', payload: folderPath });
+        setWorkspaceContext(folderPath);
+        analyzeProject(folderPath);
       }
+    } catch (e) {
+      console.error('项目文件夹选择失败:', e);
     }
   }, [state.currentProject, dispatch]);
 
@@ -879,7 +873,8 @@ export default function ChatInterface() {
 
     const text = userMsg.content;
     dispatch({ type: 'SET_PROCESSING', payload: true });
-    setThinking(true);
+    setThinkingText('');
+    thinkingTextRef.current = '';
     engineRef.current?.onMessageSent();
     presenceRef.current?.onActivity();
 
@@ -903,22 +898,22 @@ export default function ChatInterface() {
       }
     };
 
+    const isDup = (a, b) => {
+      if (!a || !b || a.length < 50) return false;
+      const sa = a.slice(0, 200), sb = b.slice(0, 200);
+      return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
+    };
+
     try {
       const response = await sendMessage(text, s, onProgress, controller.signal);
       setStreamingText('');
-        const isDup = (a, b) => {
-          if (!a || !b || a.length < 50) return false;
-          const sa = a.slice(0, 200), sb = b.slice(0, 200);
-          return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
-        };
-        const rawThinking = thinkingTextRef.current;
-        const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
-
       if (controller.signal.aborted) return;
+      const rawThinking = thinkingTextRef.current;
+      const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
       dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, thinkingText: finalThinking } });
+      try { getKnowledgeSystem()?.onConversationTurn(text, response); } catch {}
       if (s.voiceEnabled) speakText(response.slice(0, 200));
       engineRef.current?.onResponseReceived();
-          try { getKnowledgeSystem()?.onConversationTurn(execMsg, response); } catch {}
       setTimeout(() => dispatch({ type: 'SAVE_SESSION' }), 50);
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -998,13 +993,12 @@ export default function ChatInterface() {
   // We need REMOVE_MESSAGE action for refresh to work
   // Will be added to reducer below
 
-    const openApiModal = () => {
+  const openApiModal = () => {
     const model = getCurrentModel();
     setSelectedModel(model);
     setApiKeyInput(getApiKey(model) || '');
     const info = getAvailableModels().find(m => m.id === model);
     setSelectedSupplier(info?.supplier || null);
-    setApiSearch('');
     setSearchQuery('');
     setModelNameInput(getUserModelName(model) || '');
     setShowModelNameInput(false);
@@ -1038,7 +1032,7 @@ export default function ChatInterface() {
     setShowApiModal(false);
   };
 
-const handleSupplierClick = (supplierId) => {
+  const handleSupplierClick = (supplierId) => {
     setSelectedSupplier(supplierId);
     setSearchQuery('');
     const defaultModel = getSupplierDefaultModel(supplierId);
@@ -1213,14 +1207,6 @@ const handleSupplierClick = (supplierId) => {
           onClick={() => dispatch({ type: 'TOGGLE_SESSIONS_PANEL' })}
         />
         <ToolIcon
-          icon={<FolderIcon />}
-          label={state.currentProject
-            ? `工作区: ${state.currentProject.split('\\').pop() || state.currentProject}`
-            : '选择项目文件夹'}
-          active={!!state.currentProject}
-          onClick={handleProjectFolder}
-        />
-        <ToolIcon
           icon={<KnowledgeGraphIcon />} label="知识图谱"
           active={knowledgeGraphPanelOpen}
           onClick={() => setKnowledgeGraphPanelOpen(true)}
@@ -1229,6 +1215,14 @@ const handleSupplierClick = (supplierId) => {
           icon={<ToolboxIcon />} label="工具箱"
           active={state.toolboxPanelOpen}
           onClick={() => dispatch({ type: 'TOGGLE_TOOLBOX' })}
+        />
+        <ToolIcon
+          icon={<FolderIcon />}
+          label={state.currentProject
+            ? `工作区: ${state.currentProject.split('\\').pop() || state.currentProject}`
+            : '选择项目文件夹'}
+          active={!!state.currentProject}
+          onClick={handleProjectFolder}
         />
         <div className="toolbar-spacer" />
       </div>
@@ -1305,7 +1299,20 @@ const handleSupplierClick = (supplierId) => {
       {state.memoryPanelOpen && <MemoryPanel />}
       {state.personalityPanelOpen && <PersonalityPanel />}
       {state.sessionsPanelOpen && <SessionsPanel />}
+      {state.toolboxPanelOpen && (
+        <>
+          <div className="toolbox-backdrop" onClick={() => dispatch({ type: 'TOGGLE_TOOLBOX' })} />
+          <ToolboxPanel />
+        </>
+      )}
+      {state.proactivePrompts?.length > 0 && <ProactivePrompt />}
       {voicePanelOpen && <VoiceClonePanel onClose={() => setVoicePanelOpen(false)} />}
+      {knowledgeGraphPanelOpen && (
+        <KnowledgeGraphPanel
+          onClose={() => setKnowledgeGraphPanelOpen(false)}
+          getKnowledgeSystem={getKnowledgeSystem}
+        />
+      )}
       {planPanelOpen && (
         <div className="plan-panel-overlay" onClick={() => setPlanPanelOpen(false)}>
           <div className="plan-panel" onClick={e => e.stopPropagation()}>
@@ -1334,26 +1341,6 @@ const handleSupplierClick = (supplierId) => {
             </div>
           </div>
         </div>
-      )}
-
-      
-      {/* ====== Toolbox Panel ====== */}
-      {state.toolboxPanelOpen && (
-        <>
-          <div className="toolbox-backdrop" onClick={() => dispatch({ type: 'TOGGLE_TOOLBOX' })} />
-          <ToolboxPanel />
-        </>
-      )}
-
-      {/* ====== Proactive Prompt ====== */}
-      {state.proactivePrompts?.length > 0 && <ProactivePrompt />}
-
-      {/* ====== Knowledge Graph Panel ====== */}
-      {knowledgeGraphPanelOpen && (
-        <KnowledgeGraphPanel
-          onClose={() => setKnowledgeGraphPanelOpen(false)}
-          getKnowledgeSystem={getKnowledgeSystem}
-        />
       )}
 
       {/* API Key Modal — 两层设计：供应商卡片 → 模型芯片 */}
@@ -1528,19 +1515,19 @@ const handleSupplierClick = (supplierId) => {
                           }}
                         >
                           <span className="model-chip-icon">{m.vision ? (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-      <circle cx="12" cy="12" r="3"/>
-    </svg>
-  ) : (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-      <polyline points="14 2 14 8 20 8"/>
-      <line x1="16" y1="13" x2="8" y2="13"/>
-      <line x1="16" y1="17" x2="8" y2="17"/>
-      <polyline points="10 9 9 9 8 9"/>
-    </svg>
-  )}</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                              <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                              <polyline points="14 2 14 8 20 8"/>
+                              <line x1="16" y1="13" x2="8" y2="13"/>
+                              <line x1="16" y1="17" x2="8" y2="17"/>
+                              <polyline points="10 9 9 9 8 9"/>
+                            </svg>
+                          )}</span>
                           <span className="model-chip-name">{m.name}</span>
                         </div>
                       ))}
