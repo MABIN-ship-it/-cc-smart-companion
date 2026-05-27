@@ -104,14 +104,14 @@ const MODEL_REGISTRY = {
     supplier: 'deepseek',
     name: 'DeepSeek V4 Pro',
     endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
-    protocol: 'anthropic', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
+    protocol: 'anthropic', modelName: 'deepseek-chat', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
     description: '🏆 综合最强——编程、推理、写作、分析样样精通。支持图片识别，一次能读100万字（约3本小说）。缺点：高峰期偶尔排队。适合：日常对话+专业工作，首选推荐',
   },
   'deepseek-v4-flash': {
     supplier: 'deepseek',
     name: 'DeepSeek V4 Flash',
     endpoint: 'https://api.deepseek.com/anthropic/v1/messages',
-    protocol: 'anthropic', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
+    protocol: 'anthropic', modelName: 'deepseek-chat', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
     description: '⚡ 速度飞快，价格只有Pro的1/3。日常聊天、翻译、摘要等轻量任务绰绰有余。缺点：复杂逻辑推理不如Pro。适合：高频简单任务，省钱首选',
   },
   'deepseek-chat': {

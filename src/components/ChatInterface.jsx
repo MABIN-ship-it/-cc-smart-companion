@@ -600,7 +600,7 @@ export default function ChatInterface() {
 
         try {
           const retryRes = await withRetry(
-            () => sendMessage(text, stateRef.current, onProgress, controller.signal),
+            () => sendMessage(text, stateRef.current, onProgress, controller.signal, images),
             { maxRetries: 2, delay: 2000, signal: controller.signal }
           );
 
@@ -664,9 +664,11 @@ export default function ChatInterface() {
       for (const f of files) {
         try { await addDocumentFromFile(f.path); } catch {}
       }
-      dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `已添加 ${files.length} 个文档到知识库。`, type: 'system' } });
     }
-    processUserMessage(text, { images: imgs.length > 0 ? imgs : undefined });
+    const augmentedText = files.length > 0
+      ? `${text}\n\n[用户刚刚上传了以下文件到知识库：${files.map(f => f.name).join('、')}]`
+      : text;
+    processUserMessage(augmentedText, { images: imgs.length > 0 ? imgs : undefined });
   }, [input, pendingImages, pendingFiles, processUserMessage]);
 
   // 从计划面板点击"执行"后的自动发送
@@ -867,6 +869,7 @@ export default function ChatInterface() {
     }
     if (!userMsg) return;
     if (s.isProcessing) return;
+    const userImages = userMsg?.images || [];
 
     // Remove this assistant message from state and regenerate
     dispatch({ type: 'REMOVE_MESSAGE', payload: msg.id });
@@ -908,7 +911,7 @@ export default function ChatInterface() {
     };
 
     try {
-      const response = await sendMessage(text, s, onProgress, controller.signal, images);
+      const response = await sendMessage(text, s, onProgress, controller.signal, userImages);
       setStreamingText('');
       if (controller.signal.aborted) return;
       const rawThinking = thinkingTextRef.current;
