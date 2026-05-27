@@ -155,7 +155,7 @@ function MsgActions({ msg, onRefresh, onSpeak, onLike, onDislike, onForward, onM
  * 右侧聊天气泡面板 — 含思考面板 + 消息气泡
  */
 export default function ChatBubbleLayer({
-  messages, isProcessing, streamingText, thinking, thinkingText,
+  messages, isProcessing, streamingText, thinking, thinkingText, finalThinkingText,
   onRefresh, onSpeak, onLike, onDislike, onForward, onMoreAction,
 }) {
   const containerRef = useRef(null);
@@ -218,31 +218,6 @@ export default function ChatBubbleLayer({
     <div className="chat-bubble-panel">
       <div className="chat-bubble-scroll" ref={containerRef} onWheel={handleWheel}>
 
-        {/* ── 思考面板（消息流内）────────────────────── */}
-        {thinking && !thinkCollapsed && (
-          <div className="think-panel expanded">
-            <div className="think-panel-header" onClick={() => setThinkCollapsed(true)} style={{cursor:'pointer'}}>
-              <span className="think-panel-arrow">▼</span>
-              <span className="think-panel-label">思考过程</span>
-            </div>
-            <div className="think-panel-content">
-              {thinkingText ? (
-                <span className="think-panel-text">{thinkingText}</span>
-              ) : (
-                <span className="think-panel-placeholder">思考中...</span>
-              )}
-            </div>
-          </div>
-        )}
-        {thinking && thinkCollapsed && thinkingText && (
-          <div className="think-panel collapsed" onClick={() => setThinkCollapsed(false)}>
-            <div className="think-panel-header">
-              <span className="think-panel-arrow">▶</span>
-              <span className="think-panel-label">思考过程</span>
-            </div>
-          </div>
-        )}
-
         {visibleMsgs.map((msg, i) => (
           <div key={msg.id || i} className={`chat-bubble ${msg.role === 'user' ? 'user-bubble' : ''}`}>
             <div className="chat-bubble-body">
@@ -263,7 +238,17 @@ export default function ChatBubbleLayer({
                 </div>
               )}
               {/* 思考折叠组件（嵌入消息气泡） */}
-              {msg.thinkingText && <CollapsedThinking text={msg.thinkingText} />}
+              {msg.role === 'assistant' && !msg.type && (
+                msg.thinkingText
+                  ? <CollapsedThinking text={msg.thinkingText} />
+                  : <CollapsedThinking text="简单问题，无需思考。" />
+              )}
+              {msg.role === 'assistant' && msg.type === 'tool_response' && msg.thinkingText && (
+                <CollapsedThinking text={msg.thinkingText} />
+              )}
+              {msg.role === 'assistant' && msg.type === 'thinking' && msg.thinkingText && (
+                <CollapsedThinking text={msg.thinkingText} />
+              )}
               {msg.content && (
                 <div
                   className="chat-bubble-text"
@@ -285,15 +270,32 @@ export default function ChatBubbleLayer({
           </div>
         ))}
 
-        {/* ── 流式输出 ──────────────────────────────────── */}
-        {streamingText && (
+        {/* ── 流式输出（在消息列表之后，不引起跳动）── */}
+        {(thinking || streamingText) && (
           <div className="chat-bubble streaming">
             <div className="chat-bubble-body">
-              <div
-                className="chat-bubble-text"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingText) }}
-              />
-              <span className="cursor-blink">|</span>
+              {thinking && !thinkCollapsed && (
+                <div className="think-panel expanded">
+                  <div className="think-panel-header" onClick={() => setThinkCollapsed(true)} style={{cursor:'pointer'}}>
+                    <span className="think-panel-arrow">▼</span>
+                    <span className="think-panel-label">思考过程</span>
+                  </div>
+                  <div className="think-panel-content">
+                    {thinkingText || '思考中...'}
+                  </div>
+                </div>
+              )}
+              {thinking && thinkCollapsed && thinkingText && (
+                <div className="think-panel collapsed" onClick={() => setThinkCollapsed(false)}>
+                  ▶ 思考过程
+                </div>
+              )}
+              {streamingText && (
+                <>
+                  <div className="chat-bubble-text" dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingText) }} />
+                  <span className="cursor-blink">|</span>
+                </>
+              )}
             </div>
           </div>
         )}

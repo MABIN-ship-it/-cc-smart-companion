@@ -6,31 +6,37 @@ import { extractProfileDiff, applyDiff } from '../services/userProfile';
 import { detectUserFeedback, addLesson } from '../services/lessonsLearned';
 import { addFavorite, addFeedback, addReport } from '../services/interactions';
 import { isSpeechSupported, isMediaRecorderSupported, startListening, speakText, stopListening, startVoiceRecording, stopVoiceRecording, cancelVoiceRecording, transcribeAudio } from '../services/speech';
+import { startScheduledScan, stopScheduledScan } from '../services/feishuMonitor';
+import { dispatchFeishuMessage, extractTextFromEvent, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
 import { startProactiveEngine } from '../services/proactive';
 import { createExpressionEngine } from '../services/expressionEngine';
 import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
 import { getRelationship, recordConversation, getLevelInfo } from '../services/relationshipTracker';
 import { initNetworkMonitor, categorizeError, isRetryable, withRetry } from '../services/errorHandler';
-import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey, getSuppliers, getSupplierDefaultModel, getCustomProviders, saveCustomProvider, deleteCustomProvider, getExtraHeader, setExtraHeader } from '../services/modelAdapter';
+import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey, getSuppliers, getSupplierDefaultModel, getCustomProviders, saveCustomProvider, deleteCustomProvider, getExtraHeader, setExtraHeader, getUserModelName, setUserModelName } from '../services/modelAdapter';
 import { setWorkspaceContext } from '../services/toolRegistry';
 import { analyzeProject } from '../services/projectContext';
 import { addDocumentFromFile } from '../services/knowledgeBase';
+import { getKnowledgeSystem } from '../knowledge/KnowledgeSystem.js';
 import MemoryPanel from './MemoryPanel';
 import PersonalityPanel from './PersonalityPanel';
 import SessionsPanel from './SessionsPanel';
 import SessionBubbles from './SessionBubbles';
 import VoiceClonePanel from './VoiceClonePanel';
+import KnowledgeGraphPanel from './panels/KnowledgeGraphPanel';
 import PlanCard from './PlanCard';
 import ToolCallCard from './ToolCallCard';
 import CharacterScene from './CharacterScene';
 import AngelDevilOverlay from './AngelDevilOverlay';
 import StageBackground from './StageBackground';
 import ChatBubbleLayer from './ChatBubbleLayer';
+import ToolboxPanel from './ToolboxPanel';
+import ProactivePrompt from './ProactivePrompt';
 import InputBar from './InputBar';
 import ToolIcon, {
   ApiKeyIcon, PersonalityIcon, VoiceIcon, VoiceCloneIcon,
-  MemoryIcon, FolderIcon, ChatHistoryIcon,
+  MemoryIcon, FolderIcon, ChatHistoryIcon, KnowledgeGraphIcon, ToolboxIcon,
 } from './ToolIcon';
 
 export default function ChatInterface() {
@@ -50,6 +56,7 @@ export default function ChatInterface() {
   const [retrying, setRetrying] = useState(false);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
   const [voicePanelOpen, setVoicePanelOpen] = useState(false);
+  const [knowledgeGraphPanelOpen, setKnowledgeGraphPanelOpen] = useState(false);
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [planContent, setPlanContent] = useState('');
   const [pendingImages, setPendingImages] = useState([]); // base64 图片等待发送
@@ -61,13 +68,20 @@ export default function ChatInterface() {
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [extraFieldValues, setExtraFieldValues] = useState({});
   const [showCustomForm, setShowCustomForm] = useState(false);
+  const [apiSearch, setApiSearch] = useState('');
+  const [modelNameInput, setModelNameInput] = useState('');
+  const [showModelNameInput, setShowModelNameInput] = useState(false);
+  const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
   const [customForm, setCustomForm] = useState({ name: '', endpoint: '', protocol: 'openai', apiKey: '' });
   const wasOfflineRef = useRef(false);
+  const thinkingTextRef = useRef('');
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const apiKeyInputRef = useRef(null);
   const abortRef = useRef(null);
   const stateRef = useRef(state);
+  const feishuReplyRef = useRef(null);
+  const processUserMessageRef = useRef(null);
   const engineRef = useRef(null);
   const emotionRef = useRef(null);
   const presenceRef = useRef(null);
@@ -115,6 +129,66 @@ export default function ChatInterface() {
     const rel = getRelationship();
     if (rel.askedQuestions) {
       // Already handled in recordConversation
+    }
+
+    // Initialize KnowledgeSystem (await migration)
+    const ks = getKnowledgeSystem();
+    if (ks) {
+      (async () => {
+        try {
+          await ks.initialize();
+          const stats = ks.getStats();
+          console.log('[KS] 初始化完成, 实体数:', stats?.totalEntities);
+
+          // 兜底：迁移后仍为空，从旧系统直接导入
+          if (!stats?.totalEntities) {
+            const { loadMemories } = await import('../services/memory.js');
+            const { loadProfile } = await import('../services/userProfile.js');
+            const { getRecentLessons } = await import('../services/lessonsLearned.js');
+
+            const memories = loadMemories();
+            const profile = loadProfile();
+            const lessons = getRecentLessons(100);
+
+            if (memories.length || Object.keys(profile.fields || {}).length || lessons.length) {
+              for (const m of memories) {
+                try {
+                  ks._storage.putEntity(m.id || `mem_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, {
+                    type: 'memory', content: m.content, level: m.level || 'warm',
+                    importance: m.importance || 5, memoryType: m.type || 'user',
+                    mentions: m.mentions || 1, source: m.source || 'auto',
+                    createdAt: m.createdAt || Date.now(), lastAccessed: m.lastAccessed || Date.now(),
+                    expiresAt: m.expiresAt || null, _updatedAt: m.createdAt || Date.now(),
+                  });
+                } catch {}
+              }
+              for (const [key, value] of Object.entries(profile.fields || {})) {
+                try {
+                  if (value && typeof value === 'string' && key !== 'updatedAt') {
+                    ks._storage.putEntity(`profile_${key}`, {
+                      type: 'profile_fact', category: 'general', key, value,
+                      confidence: 0.5, evidence: '(从旧版数据导入)', _updatedAt: profile.updatedAt || Date.now(),
+                    });
+                  }
+                } catch {}
+              }
+              for (const l of lessons) {
+                try {
+                  ks._storage.putEntity(l.id || `lesson_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, {
+                    type: 'lesson', context: l.context, approach: l.approach || '',
+                    result: l.result || '', isMistake: l.isMistake || false,
+                    createdAt: l.createdAt || Date.now(), _updatedAt: l.createdAt || Date.now(),
+                  });
+                } catch {}
+              }
+              ks._storage.tryPersist();
+              console.log('[KS] 兜底导入完成, 实体数:', ks.getStats()?.totalEntities);
+            }
+          }
+        } catch (e) {
+          console.warn('[KS] 初始化失败:', e);
+        }
+      })();
     }
 
     return () => {
@@ -215,6 +289,7 @@ export default function ChatInterface() {
     return remove;
   }, []);
 
+
   const handleDownloadUpdate = async () => {
     setUpdateStatus('downloading');
     setUpdateProgress(0);
@@ -231,6 +306,133 @@ export default function ChatInterface() {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages, toolSteps]);
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // ─── 启动时自动连接飞书 ──────────────────────────────
+  useEffect(() => {
+    if (state.feishuStatus === 'connected' || state.feishuStatus === 'connecting') return;
+    if (!isFeishuConfigured()) return;
+    const config = getFeishuConfig(); // imported from feishu.js
+    if (config?.appId && config?.appSecret) {
+      dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connecting' });
+      window.electronAPI?.feishuConfigure(config.appId, config.appSecret).then(result => {
+        if (result?.success) {
+          // 状态由 onFeishuStatusChange 推送更新
+        } else {
+          dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
+        }
+      }).catch(() => {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
+      });
+    }
+  }, []);
+
+  // ─── 飞书监测引擎（消息互通+任务检测+定时扫描） ──────
+  useEffect(() => {
+    if (state.feishuStatus !== 'connected') return;
+
+    // 连接后向第一个联系人发送欢迎消息
+    sendWelcomeMessage();
+
+    // 实时消息监听：主进程 WebSocket → IPC → 完整AI处理 → 自动回复飞书
+    let unsubFeishuMsg = null;
+    if (window.electronAPI?.onFeishuMessage) {
+      unsubFeishuMsg = window.electronAPI.onFeishuMessage((data) => {
+        dispatchFeishuMessage(data);
+
+        const text = extractTextFromEvent(data);
+        if (!text) return;
+
+        // 将飞书消息送入完整AI处理流程（和CC聊天互通、记忆互通）
+        feishuReplyRef.current = { type: 'reply', eventData: data };
+        processUserMessageRef.current?.(`[来自飞书] ${text}`, { source: 'feishu', feishuData: data });
+
+        // 同时做任务检测（长消息）
+        if (text.length > 10) {
+          import('../services/feishuMonitor.js').then(({ scanForTasks }) => {
+            scanForTasks().then(result => {
+              if (result.tasks?.length > 0) {
+                const prompts = result.tasks.map(t => ({
+                  id: t.id,
+                  description: t.description,
+                  senderName: t.senderName,
+                  chatName: t.chatName,
+                  capabilities: t.capabilities,
+                  type: t.type,
+                  onAccept: (instruction) => {
+                    feishuReplyRef.current = { type: 'reply', eventData: data };
+                    processUserMessageRef.current?.(instruction, { source: 'feishu_proactive', feishuData: data });
+                  },
+                }));
+                dispatch({ type: 'SET_PROACTIVE_PROMPTS', payload: prompts });
+              }
+            });
+          });
+        }
+      });
+    }
+
+    // 定时扫描（每日11:00/15:00/19:00 + 连接后5秒首次扫描）
+    startScheduledScan((tasks) => {
+      const prompts = tasks.map(t => ({
+        id: t.id,
+        description: t.description,
+        senderName: t.senderName,
+        chatName: t.chatName,
+        capabilities: t.capabilities,
+        type: t.type,
+        onAccept: (instruction) => {
+          feishuReplyRef.current = { type: 'chat', chatId: t.chatId };
+          processUserMessageRef.current?.(instruction, { source: 'feishu_proactive' });
+        },
+      }));
+      dispatch({ type: 'SET_PROACTIVE_PROMPTS', payload: prompts });
+    });
+
+    return () => {
+      stopScheduledScan();
+      if (unsubFeishuMsg) unsubFeishuMsg();
+    };
+  }, [state.feishuStatus]);
+
+
+  // 监听AI响应 → 转发到飞书
+  useEffect(() => {
+    if (!feishuReplyRef.current || state.messages.length === 0) return;
+    const lastMsg = state.messages[state.messages.length - 1];
+    if (lastMsg.role !== 'assistant' || lastMsg._fw) return;
+    lastMsg._fw = true;
+    const target = feishuReplyRef.current;
+    feishuReplyRef.current = null;
+    (async () => {
+      try {
+        if (target.type === 'reply') {
+          await replyToMessage(target.eventData, lastMsg.content);
+        } else if (target.type === 'chat') {
+          await feishuSendMessage('chat_id', target.chatId, lastMsg.content);
+        }
+      } catch (e) {
+        console.error('[Feishu] 转发AI响应失败:', e);
+      }
+    })();
+  }, [state.messages]);
+
+
+  // ─── 飞书WS状态监听（独立于连接状态，确保connecting阶段也能收到推送）───
+  useEffect(() => {
+    if (!window.electronAPI?.onFeishuStatusChange) return;
+    const unsub = window.electronAPI.onFeishuStatusChange((status) => {
+      if (status.event === 'ready' || status.event === 'reconnected') {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connected' });
+      } else if (status.event === 'reconnecting') {
+        dispatch({ type: 'SET_FEISHU_STATUS', payload: 'connecting' });
+      } else if (status.event === 'error') {
+        if (!status.running) dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
+      }
+    });
+    return unsub;
+  }, []);
+
+
   useEffect(() => { if (showApiModal) apiKeyInputRef.current?.focus(); }, [showApiModal]);
 
   const handleStop = useCallback(() => {
@@ -325,6 +527,8 @@ export default function ChatInterface() {
       } else if (type === 'text') {
         setStreamingText(data);
       } else if (type === 'think') {
+        setThinking(true);
+        thinkingTextRef.current = data;
         setThinkingText(data);
       }
     };
@@ -332,6 +536,16 @@ export default function ChatInterface() {
     try {
       const response = await sendMessage(text, s, onProgress, controller.signal);
       setStreamingText('');
+
+      const isDup = (a, b) => {
+        if (!a || !b || a.length < 50) return false;
+        const sa = a.slice(0, 200), sb = b.slice(0, 200);
+        return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
+      };
+
+      const rawThinking = thinkingTextRef.current;
+      const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
+
 
       if (controller.signal.aborted) return;
 
@@ -343,13 +557,14 @@ export default function ChatInterface() {
           .trim();
         setPlanContent(cleanContent);
         setPlanPanelOpen(true);
-        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: '📋 方案已生成，请在右侧面板查看详情。', type: 'plan' } });
+        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: '📋 方案已生成，请在右侧面板查看详情。', type: 'plan', thinkingText: finalThinking } });
       } else if (collectedSteps.length > 0) {
         dispatch({
           type: 'ADD_MESSAGE',
           payload: {
             role: 'assistant',
             content: response,
+            thinkingText: finalThinking,
             type: 'tool_response',
             toolSteps: [...collectedSteps],
           },
@@ -435,6 +650,8 @@ export default function ChatInterface() {
       inputRef.current?.focus();
     }
   }, []);
+  processUserMessageRef.current = processUserMessage;
+
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -468,6 +685,8 @@ export default function ChatInterface() {
       } else if (type === 'text') {
         setStreamingText(data);
       } else if (type === 'think') {
+        setThinking(true);
+        thinkingTextRef.current = data;
         setThinkingText(data);
       }
     };
@@ -476,10 +695,19 @@ export default function ChatInterface() {
       try {
         const response = await sendMessage(execMsg, s, onProgress, controller.signal);
         setStreamingText('');
+        const isDup = (a, b) => {
+          if (!a || !b || a.length < 50) return false;
+          const sa = a.slice(0, 200), sb = b.slice(0, 200);
+          return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
+        };
+        const rawThinking = thinkingTextRef.current;
+        const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
+
         if (controller.signal.aborted) return;
-        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response } });
+        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, thinkingText: finalThinking } });
         if (s.voiceEnabled) speakText(response.slice(0, 200));
         engineRef.current?.onResponseReceived();
+          try { getKnowledgeSystem()?.onConversationTurn(execMsg, response); } catch {}
       } catch (err) {
         if (err.name === 'AbortError') return;
         dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: categorizeError(err), type: 'system' } });
@@ -669,6 +897,8 @@ export default function ChatInterface() {
       } else if (type === 'text') {
         setStreamingText(data);
       } else if (type === 'think') {
+        setThinking(true);
+        thinkingTextRef.current = data;
         setThinkingText(data);
       }
     };
@@ -676,10 +906,19 @@ export default function ChatInterface() {
     try {
       const response = await sendMessage(text, s, onProgress, controller.signal);
       setStreamingText('');
+        const isDup = (a, b) => {
+          if (!a || !b || a.length < 50) return false;
+          const sa = a.slice(0, 200), sb = b.slice(0, 200);
+          return sa === sb || sa.includes(sb.slice(0, 100)) || sb.includes(sa.slice(0, 100));
+        };
+        const rawThinking = thinkingTextRef.current;
+        const finalThinking = (rawThinking && rawThinking.length >= 15 && !isDup(rawThinking, response)) ? rawThinking : undefined;
+
       if (controller.signal.aborted) return;
-      dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response } });
+      dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: response, thinkingText: finalThinking } });
       if (s.voiceEnabled) speakText(response.slice(0, 200));
       engineRef.current?.onResponseReceived();
+          try { getKnowledgeSystem()?.onConversationTurn(execMsg, response); } catch {}
       setTimeout(() => dispatch({ type: 'SAVE_SESSION' }), 50);
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -759,16 +998,19 @@ export default function ChatInterface() {
   // We need REMOVE_MESSAGE action for refresh to work
   // Will be added to reducer below
 
-  const openApiModal = () => {
+    const openApiModal = () => {
     const model = getCurrentModel();
     setSelectedModel(model);
     setApiKeyInput(getApiKey(model) || '');
-    // 找到当前模型所属的供应商
     const info = getAvailableModels().find(m => m.id === model);
     setSelectedSupplier(info?.supplier || null);
+    setApiSearch('');
     setSearchQuery('');
-    setShowCustomForm(false);
+    setModelNameInput(getUserModelName(model) || '');
+    setShowModelNameInput(false);
+    setExtraHeaderInputs({});
     setExtraFieldValues({});
+    setShowCustomForm(false);
     setShowApiModal(true);
   };
 
@@ -780,7 +1022,14 @@ export default function ChatInterface() {
     }
     setCurrentModel(selectedModel);
     dispatch({ type: 'SET_MODEL', payload: selectedModel });
-    // 保存额外字段
+    if (modelNameInput.trim()) {
+      setUserModelName(selectedModel, modelNameInput.trim());
+    }
+    if (Object.keys(extraHeaderInputs).length > 0 && selectedSupplier) {
+      Object.entries(extraHeaderInputs).forEach(([field, val]) => {
+        if (val) setExtraHeader(selectedModel, field, val);
+      });
+    }
     if (Object.keys(extraFieldValues).length > 0 && selectedSupplier) {
       Object.entries(extraFieldValues).forEach(([field, val]) => {
         if (val) setExtraHeader(selectedModel, field, val);
@@ -789,7 +1038,7 @@ export default function ChatInterface() {
     setShowApiModal(false);
   };
 
-  const handleSupplierClick = (supplierId) => {
+const handleSupplierClick = (supplierId) => {
     setSelectedSupplier(supplierId);
     setSearchQuery('');
     const defaultModel = getSupplierDefaultModel(supplierId);
@@ -971,6 +1220,16 @@ export default function ChatInterface() {
           active={!!state.currentProject}
           onClick={handleProjectFolder}
         />
+        <ToolIcon
+          icon={<KnowledgeGraphIcon />} label="知识图谱"
+          active={knowledgeGraphPanelOpen}
+          onClick={() => setKnowledgeGraphPanelOpen(true)}
+        />
+        <ToolIcon
+          icon={<ToolboxIcon />} label="工具箱"
+          active={state.toolboxPanelOpen}
+          onClick={() => dispatch({ type: 'TOGGLE_TOOLBOX' })}
+        />
         <div className="toolbar-spacer" />
       </div>
 
@@ -1075,6 +1334,26 @@ export default function ChatInterface() {
             </div>
           </div>
         </div>
+      )}
+
+      
+      {/* ====== Toolbox Panel ====== */}
+      {state.toolboxPanelOpen && (
+        <>
+          <div className="toolbox-backdrop" onClick={() => dispatch({ type: 'TOGGLE_TOOLBOX' })} />
+          <ToolboxPanel />
+        </>
+      )}
+
+      {/* ====== Proactive Prompt ====== */}
+      {state.proactivePrompts?.length > 0 && <ProactivePrompt />}
+
+      {/* ====== Knowledge Graph Panel ====== */}
+      {knowledgeGraphPanelOpen && (
+        <KnowledgeGraphPanel
+          onClose={() => setKnowledgeGraphPanelOpen(false)}
+          getKnowledgeSystem={getKnowledgeSystem}
+        />
       )}
 
       {/* API Key Modal — 两层设计：供应商卡片 → 模型芯片 */}
@@ -1248,7 +1527,20 @@ export default function ChatInterface() {
                             setApiKeyInput(getApiKey(m.id) || '');
                           }}
                         >
-                          <span className="model-chip-icon">{m.vision ? '👁️' : '💬'}</span>
+                          <span className="model-chip-icon">{m.vision ? (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  ) : (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="16" y1="13" x2="8" y2="13"/>
+      <line x1="16" y1="17" x2="8" y2="17"/>
+      <polyline points="10 9 9 9 8 9"/>
+    </svg>
+  )}</span>
                           <span className="model-chip-name">{m.name}</span>
                         </div>
                       ))}

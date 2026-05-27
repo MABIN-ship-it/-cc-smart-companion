@@ -332,6 +332,8 @@ export function getSuppliers() {
     });
     result.push({ ...sc, models, hasKey, modelCount: models.length });
   }
+  // 已配置的供应商排到最前面
+  result.sort((a, b) => (b.hasKey ? 1 : 0) - (a.hasKey ? 1 : 0));
   return result;
 }
 
@@ -369,6 +371,22 @@ export function saveCustomProvider(provider) {
 export function deleteCustomProvider(name) {
   const existing = getCustomProviders().filter(p => p.name !== name);
   try { localStorage.setItem('cc_custom_providers', JSON.stringify(existing)); } catch {}
+}
+
+export function getUserModelName(modelId) {
+  try {
+    const names = JSON.parse(localStorage.getItem('cc_model_names') || '{}');
+    return names[modelId] || '';
+  } catch { return ''; }
+}
+
+export function setUserModelName(modelId, modelName) {
+  try {
+    const names = JSON.parse(localStorage.getItem('cc_model_names') || '{}');
+    if (modelName) names[modelId] = modelName;
+    else delete names[modelId];
+    localStorage.setItem('cc_model_names', JSON.stringify(names));
+  } catch {}
 }
 
 /** 获取所有已注册模型（扁平列表，向后兼容） */
