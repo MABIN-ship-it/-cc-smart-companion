@@ -327,7 +327,7 @@ export function getSuppliers() {
       }));
     const hasKey = models.some(m => {
       try {
-        return !!(localStorage.getItem(`cc_api_key_${supplierId}`) || localStorage.getItem('cc_api_key'));
+        return !!localStorage.getItem(`cc_api_key_${supplierId}`);
       } catch { return false; }
     });
     result.push({ ...sc, models, hasKey, modelCount: models.length });
@@ -442,7 +442,6 @@ export function getApiKey(modelId) {
   try {
     return (supplierKeyName && localStorage.getItem(supplierKeyName))
       || localStorage.getItem(modelKeyName)
-      || localStorage.getItem('cc_api_key')
       || null;
   } catch {
     return null;

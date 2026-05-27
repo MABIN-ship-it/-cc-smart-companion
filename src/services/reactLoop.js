@@ -105,7 +105,7 @@ async function nonStreamingRequest({ model, messages, systemPrompt, tools, onPro
  * @param {AbortSignal} signal - 中断信号
  * @returns {Promise<string>} 最终回复文本
  */
-export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onProgress, signal) {
+export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onProgress, signal, images) {
   const model = getCurrentModel();
   const tools = getToolDefinitions();
 
@@ -146,6 +146,16 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     : lastMsg?.content;
   if (lastMsg?.role === 'user' && lastText === userMessage) {
     // userMessage 已在 state.messages 中存在，无需重复
+  } else if (images && images.length > 0) {
+    const blocks = [];
+    for (const img of images) {
+      const match = img.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (match) {
+        blocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
+      }
+    }
+    if (userMessage) blocks.push({ type: 'text', text: userMessage });
+    messages.push({ role: 'user', content: blocks });
   } else {
     messages.push({ role: 'user', content: userMessage });
   }

@@ -17,6 +17,7 @@ export default function InputBar({
   input, onInputChange, onSend, onStop, onVoiceToggle,
   listening, isProcessing, transcribing, onFocus, onBlur, inputRef, onFileUpload,
   pendingImages, onImagePaste, onRemoveImage,
+  pendingFiles, onRemoveFile,
 }) {
   const { state, dispatch } = useApp();
   const currentMode = state.inputMode || 'execute';
@@ -73,6 +74,26 @@ export default function InputBar({
                 className="input-image-remove"
                 onClick={() => onRemoveImage?.(i)}
               >×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 文件预览 */}
+      {pendingFiles && pendingFiles.length > 0 && (
+        <div className="input-file-chips">
+          {pendingFiles.map((f, i) => (
+            <div key={i} className="input-file-chip">
+              <span className="input-file-chip-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+              </span>
+              <span className="input-file-chip-name">{f.name}</span>
+              <button className="input-file-chip-remove" onClick={() => onRemoveFile?.(i)}>×</button>
             </div>
           ))}
         </div>

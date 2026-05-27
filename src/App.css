@@ -1121,20 +1121,87 @@ body {
 
 .input-image-remove {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 18px;
-  height: 18px;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: none;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(4px);
   color: #fff;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.input-image-preview:hover .input-image-remove {
+  opacity: 1;
+}
+
+/* ====== 文件上传预览卡片 ====== */
+
+.input-file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px 8px;
+}
+
+.input-file-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: all var(--duration-fast) var(--ease-out);
+  max-width: 200px;
+}
+
+.input-file-chip:hover {
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.08);
+  color: var(--text-primary);
+}
+
+.input-file-chip-icon {
+  flex-shrink: 0;
+  color: var(--accent-light);
+  display: flex;
+  align-items: center;
+}
+
+.input-file-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.input-file-chip-remove {
+  flex-shrink: 0;
+  width: 18px; height: 18px;
+  border: none; border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--duration-fast);
+  line-height: 1;
+  padding: 0;
+}
+.input-file-chip-remove:hover {
+  background: var(--danger);
+  color: #fff;
 }
 
 /* Images in chat bubbles */

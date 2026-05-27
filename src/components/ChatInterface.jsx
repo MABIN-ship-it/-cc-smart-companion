@@ -66,6 +66,7 @@ export default function ChatInterface() {
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [planContent, setPlanContent] = useState('');
   const [pendingImages, setPendingImages] = useState([]); // base64 图片等待发送
+  const [pendingFiles, setPendingFiles] = useState([]); // 待上传文件队列
   const [transcribing, setTranscribing] = useState(false); // STT转写中
   const [updateStatus, setUpdateStatus] = useState(null); // null | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -537,7 +538,7 @@ export default function ChatInterface() {
     };
 
     try {
-      const response = await sendMessage(text, s, onProgress, controller.signal);
+      const response = await sendMessage(text, s, onProgress, controller.signal, images);
       setStreamingText('');
 
       if (controller.signal.aborted) return;
@@ -653,14 +654,22 @@ export default function ChatInterface() {
 
   processUserMessageRef.current = processUserMessage;
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text) return;
     setInput('');
     const imgs = pendingImages;
+    const files = pendingFiles;
     setPendingImages([]);
+    setPendingFiles([]);
+    if (files.length > 0) {
+      for (const f of files) {
+        try { await addDocumentFromFile(f.path); } catch {}
+      }
+      dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `已添加 ${files.length} 个文档到知识库。`, type: 'system' } });
+    }
     processUserMessage(text, { images: imgs.length > 0 ? imgs : undefined });
-  }, [input, pendingImages, processUserMessage]);
+  }, [input, pendingImages, pendingFiles, processUserMessage]);
 
   // 从计划面板点击"执行"后的自动发送
   const handlePlanExecute = useCallback((execMsg) => {
@@ -814,31 +823,19 @@ export default function ChatInterface() {
       if (window.electronAPI?.selectFiles) {
         files = await window.electronAPI.selectFiles();
       } else {
-        // Fallback: browser file input
         const input = document.createElement('input');
         input.type = 'file';
         input.multiple = true;
         input.accept = '.pdf,.docx,.md,.txt,.py,.js,.jsx,.ts,.tsx,.css,.html,.json,.jpg,.png';
         files = await new Promise((resolve) => {
-          input.onchange = (e) => resolve(Array.from(e.target.files).map(f => f.path || f));
+          input.onchange = (e) => resolve(Array.from(e.target.files).map(f => ({ name: f.name, path: f.path || f.name })));
           input.click();
         });
       }
       if (!files || files.length === 0) return;
-      let added = 0;
-      for (const filePath of files) {
-        try {
-          await addDocumentFromFile(filePath);
-          added++;
-        } catch (e) {
-          console.warn(`上传文件失败 ${filePath}:`, e.message);
-        }
-      }
-      if (added > 0) {
-        dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `已添加 ${added} 个文档到知识库。`, type: 'system' } });
-      }
+      setPendingFiles(prev => [...prev, ...files]);
     } catch (e) {
-      console.error('文件上传失败:', e);
+      console.error('文件选择失败:', e);
     }
   }, []);
 
@@ -848,6 +845,10 @@ export default function ChatInterface() {
 
   const handleRemoveImage = useCallback((index) => {
     setPendingImages(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleRemoveFile = useCallback((index) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
   // ---- 消息操作按钮回调 ----
@@ -905,7 +906,7 @@ export default function ChatInterface() {
     };
 
     try {
-      const response = await sendMessage(text, s, onProgress, controller.signal);
+      const response = await sendMessage(text, s, onProgress, controller.signal, images);
       setStreamingText('');
       if (controller.signal.aborted) return;
       const rawThinking = thinkingTextRef.current;
@@ -1244,6 +1245,8 @@ export default function ChatInterface() {
         pendingImages={pendingImages}
         onImagePaste={handleImagePaste}
         onRemoveImage={handleRemoveImage}
+        pendingFiles={pendingFiles}
+        onRemoveFile={handleRemoveFile}
       />
 
       {/* ====== Layer 4: Toast notifications ====== */}

@@ -29,7 +29,7 @@ import { analyzeProject, updateLastTask } from './projectContext';
  * @param {AbortSignal} signal - 中断信号
  * @returns {Promise<string>} AI回复文本
  */
-export async function sendMessage(userMessage, state, onProgress, signal) {
+export async function sendMessage(userMessage, state, onProgress, signal, images) {
   // 获取API Key（modelAdapter自行管理多模型Key）
   const model = getCurrentModel();
   const key = getApiKey(model);
@@ -59,7 +59,7 @@ export async function sendMessage(userMessage, state, onProgress, signal) {
 
     // 执行模式：跳过复杂度分析，直接动手
     if (mode === 'execute') {
-      const result = await runReActLoop(userMessage, state, key, systemPrompt, onProgress, signal);
+      const result = await runReActLoop(userMessage, state, key, systemPrompt, onProgress, signal, images);
       updateLastTask(userMessage.slice(0, 60));
       return result;
     }
@@ -76,13 +76,13 @@ export async function sendMessage(userMessage, state, onProgress, signal) {
       }
       // 委托失败（无法分解或子任务全部失败），回退到ReAct
     }
-    const result = await runReActLoop(userMessage, state, key, systemPrompt, onProgress, signal);
+    const result = await runReActLoop(userMessage, state, key, systemPrompt, onProgress, signal, images);
     updateLastTask(userMessage.slice(0, 60));
     return result;
   }
 
   // 回退：无工具的简单对话
-  return await simpleChat(userMessage, state, systemPrompt, onProgress, signal);
+  return await simpleChat(userMessage, state, systemPrompt, onProgress, signal, images);
 }
 
 // ─── 子任务委托上下文构建（异步，含项目结构+git状态）───
@@ -129,7 +129,7 @@ async function buildDelegationContext(state) {
 
 // ─── 简单对话（无工具回退）─────────────────────────────────
 
-async function simpleChat(userMessage, state, systemPrompt, onProgress, signal) {
+async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, images) {
   const model = getCurrentModel();
 
   const messages = [];
@@ -152,7 +152,19 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal) 
       }
     }
   }
-  messages.push({ role: 'user', content: userMessage });
+  if (images && images.length > 0) {
+    const blocks = [];
+    for (const img of images) {
+      const match = img.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (match) {
+        blocks.push({ type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } });
+      }
+    }
+    if (userMessage) blocks.push({ type: 'text', text: userMessage });
+    messages.push({ role: 'user', content: blocks });
+  } else {
+    messages.push({ role: 'user', content: userMessage });
+  }
 
   const timeoutSignal = AbortSignal.timeout(60000);
   const fetchSignal = signal

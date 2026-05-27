@@ -63,7 +63,6 @@ function appReducer(state, action) {
     case 'REMOVE_MEMORY':
       return { ...state, memories: state.memories.filter(m => m.id !== action.payload) };
     case 'SET_API_KEY':
-      localStorage.setItem('cc_api_key', action.payload);
       return { ...state, apiKey: action.payload };
     case 'UPDATE_PERSONALITY':
       return { ...state, personality: { ...state.personality, ...action.payload } };
