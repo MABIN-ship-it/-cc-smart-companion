@@ -148,6 +148,7 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, 
         if (textContent) blocks.push({ type: 'text', text: textContent });
         messages.push({ role: 'user', content: blocks });
       } else {
+        // 保留 content 格式：若是数组则原样传（含 thinking/tool_use blocks）
         messages.push({ role: m.role, content: m.content });
       }
     }
@@ -186,6 +187,8 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, 
       if (frame.type === 'text') {
         fullText = frame.accumulated;
         onProgress?.({ type: 'text', data: fullText });
+      } else if (frame.type === 'think') {
+        onProgress?.({ type: 'think', data: frame.accumulated });
       } else if (frame.type === 'error') {
         throw new Error(frame.error);
       } else if (frame.type === 'done') {

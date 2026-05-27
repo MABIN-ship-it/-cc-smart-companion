@@ -29,6 +29,7 @@ const MAX_TOOL_OUTPUT = 3000;
 
 async function streamingRequest({ model, messages, systemPrompt, tools, onProgress, signal }) {
   let fullText = '';
+  let fullThinking = '';
   const toolUses = [];
   let stopReason = null;
 
@@ -45,6 +46,9 @@ async function streamingRequest({ model, messages, systemPrompt, tools, onProgre
       if (frame.type === 'text') {
         fullText = frame.accumulated;
         onProgress?.({ type: 'text', data: fullText });
+      } else if (frame.type === 'think') {
+        fullThinking = frame.accumulated;
+        onProgress?.({ type: 'think', data: fullThinking });
       } else if (frame.type === 'tool_use') {
         toolUses.push(frame.toolUse);
       } else if (frame.type === 'done') {
@@ -59,7 +63,7 @@ async function streamingRequest({ model, messages, systemPrompt, tools, onProgre
     return { error: categorizeError(e) };
   }
 
-  return { text: fullText, toolUses, stopReason };
+  return { text: fullText, thinking: fullThinking, toolUses, stopReason };
 }
 
 // ─── 非流式请求（400回退用）──────────────────────────────
@@ -80,12 +84,17 @@ async function nonStreamingRequest({ model, messages, systemPrompt, tools, onPro
       return { error: result.error };
     }
 
+    if (result.thinking) {
+      onProgress?.({ type: 'think', data: result.thinking });
+    }
+
     if (result.text) {
       onProgress?.({ type: 'text', data: result.text });
     }
 
     return {
       text: result.text || '',
+      thinking: result.thinking || '',
       toolUses: result.toolUses || [],
       stopReason: result.stopReason || null,
     };
@@ -128,13 +137,14 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
         if (textContent) blocks.push({ type: 'text', text: textContent });
         messages.push({ role: 'user', content: blocks });
       } else {
-        // 防御：确保 content 始终是字符串，防止数组格式泄漏到 API
-        const content = typeof m.content === 'string'
-          ? m.content
-          : (Array.isArray(m.content)
-            ? m.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
-            : String(m.content));
-        messages.push({ role: m.role, content });
+        // 保留原始 content 格式：字符串直接传，数组保留全部 blocks（含 thinking/tool_use）
+        if (typeof m.content === 'string') {
+          messages.push({ role: m.role, content: m.content });
+        } else if (Array.isArray(m.content)) {
+          messages.push({ role: m.role, content: m.content });
+        } else {
+          messages.push({ role: m.role, content: String(m.content) });
+        }
       }
     }
   }
@@ -166,6 +176,16 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
   let conversation = cleanedMessages;
   let iteration = 0;
   let finalResponse = '';
+  let roundPrefix = ''; // 跨轮累积文本
+
+  // 包装 onProgress：跨轮文本带上历史前缀
+  const wrapProgress = (event) => {
+    if (event.type === 'text' && roundPrefix) {
+      onProgress?.({ type: 'text', data: roundPrefix + '\n\n' + event.data });
+    } else {
+      onProgress?.(event);
+    }
+  };
 
   // ── ReAct循环 ──────────────────────────────────────────
   while (iteration < MAX_ITERATIONS) {
@@ -173,13 +193,13 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     iteration++;
 
     onProgress?.({
-      type: 'think',
+      type: 'status',
       data: iteration === 1 ? '正在分析你的请求...' : '正在继续处理...',
     });
 
     // ── 压缩检查 ────────────────────────────────────────
     if (shouldCompact(conversation, systemPrompt, model)) {
-      onProgress?.({ type: 'think', data: '对话较长，正在整理上下文...' });
+      onProgress?.({ type: 'status', data: '对话较长，正在整理上下文...' });
       conversation = smartTruncateMessages(conversation, systemPrompt, model);
     }
 
@@ -199,19 +219,19 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       messages: conversation,
       systemPrompt,
       tools,
-      onProgress,
+      onProgress: wrapProgress,
       signal: fetchSignal,
     });
 
     // 流式400时回退到非流式（DeepSeek Anthropic兼容层已知问题）
     if (result.error && result.error.includes('400')) {
-      onProgress?.({ type: 'think', data: '正在切换通信方式...' });
+      onProgress?.({ type: 'status', data: '正在切换通信方式...' });
       result = await nonStreamingRequest({
         model,
         messages: conversation,
         systemPrompt,
         tools,
-        onProgress,
+        onProgress: wrapProgress,
         signal: fetchSignal,
       });
     }
@@ -224,8 +244,9 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     // ── 没有tool_use：返回文本给用户 ──────────────────────
     if (!result.toolUses || result.toolUses.length === 0) {
       if (result.text) {
-        onProgress?.({ type: 'text', data: result.text });
-        return result.text;
+        const finalText = roundPrefix ? roundPrefix + '\n\n' + result.text : result.text;
+        onProgress?.({ type: 'text', data: finalText });
+        return finalText;
       }
       // 空响应：让模型继续
       conversation.push({ role: 'assistant', content: '请继续。' });
@@ -235,6 +256,9 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     // ── 有tool_use：执行工具 ──────────────────────────────
     // 构建assistant消息（保留原始的content blocks用于消息历史）
     const assistantBlocks = [];
+    if (result.thinking) {
+      assistantBlocks.push({ type: 'thinking', thinking: result.thinking });
+    }
     if (result.text) {
       assistantBlocks.push({ type: 'text', text: result.text });
     }
@@ -324,6 +348,11 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       conversation.push(buildToolResultsMessage(allToolResults));
     }
 
+    // 保存本轮文本到跨轮前缀，防止下一轮覆盖
+    if (result.text) {
+      roundPrefix = roundPrefix ? roundPrefix + '\n\n' + result.text : result.text;
+    }
+
     // 继续循环
   }
 
@@ -343,12 +372,13 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     messages: conversation,
     systemPrompt,
     tools: [],
-    onProgress,
+    onProgress: wrapProgress,
     signal: fetchSignal2,
   });
 
   if (finalResult.text) {
-    return finalResult.text;
+    const finalText = roundPrefix ? roundPrefix + '\n\n' + finalResult.text : finalResult.text;
+    return finalText;
   }
   if (finalResult.error) {
     return finalResult.error;

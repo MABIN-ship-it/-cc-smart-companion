@@ -23,7 +23,6 @@ import MemoryPanel from './MemoryPanel';
 import PersonalityPanel from './PersonalityPanel';
 import SessionsPanel from './SessionsPanel';
 import SessionBubbles from './SessionBubbles';
-import VoiceClonePanel from './VoiceClonePanel';
 import KnowledgeGraphPanel from './panels/KnowledgeGraphPanel';
 import PlanCard from './PlanCard';
 import ToolCallCard from './ToolCallCard';
@@ -33,7 +32,7 @@ import StageBackground from './StageBackground';
 import ChatBubbleLayer from './ChatBubbleLayer';
 import InputBar from './InputBar';
 import ToolIcon, {
-  ApiKeyIcon, PersonalityIcon, VoiceIcon, VoiceCloneIcon,
+  ApiKeyIcon, PersonalityIcon, VoiceIcon,
   MemoryIcon, FolderIcon, ChatHistoryIcon, KnowledgeGraphIcon, ToolboxIcon,
 } from './ToolIcon';
 import ToolboxPanel from './ToolboxPanel';
@@ -61,7 +60,6 @@ export default function ChatInterface() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [retrying, setRetrying] = useState(false);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
-  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
   const [knowledgeGraphPanelOpen, setKnowledgeGraphPanelOpen] = useState(false);
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [planContent, setPlanContent] = useState('');
@@ -821,7 +819,11 @@ export default function ChatInterface() {
     try {
       let files;
       if (window.electronAPI?.selectFiles) {
-        files = await window.electronAPI.selectFiles();
+        const paths = await window.electronAPI.selectFiles();
+        files = (paths || []).map(p => {
+          const name = p.split(/[\\/]/).pop() || p;
+          return { name, path: p };
+        });
       } else {
         const input = document.createElement('input');
         input.type = 'file';
@@ -1193,11 +1195,6 @@ export default function ChatInterface() {
           onClick={() => dispatch({ type: 'TOGGLE_VOICE' })}
         />
         <ToolIcon
-          icon={<VoiceCloneIcon />} label="语音克隆"
-          active={voicePanelOpen}
-          onClick={() => setVoicePanelOpen(true)}
-        />
-        <ToolIcon
           icon={<MemoryIcon />} label="记忆面板"
           active={state.memoryPanelOpen}
           onClick={() => dispatch({ type: 'TOGGLE_MEMORY_PANEL' })}
@@ -1309,7 +1306,6 @@ export default function ChatInterface() {
         </>
       )}
       {state.proactivePrompts?.length > 0 && <ProactivePrompt />}
-      {voicePanelOpen && <VoiceClonePanel onClose={() => setVoicePanelOpen(false)} />}
       {knowledgeGraphPanelOpen && (
         <KnowledgeGraphPanel
           onClose={() => setKnowledgeGraphPanelOpen(false)}

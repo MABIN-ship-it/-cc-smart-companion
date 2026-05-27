@@ -242,35 +242,35 @@ const MODEL_REGISTRY = {
   'mimo-v2.5-pro': {
     supplier: 'xiaomi',
     name: '小米 MiMo V2.5 Pro',
-    endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    endpoint: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions',
     protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1100000, vision: true,
     description: '🏅 小米旗舰，110万字超长上下文+强编程能力，性能对标一线模型。缺点：小米AI生态刚起步，周边工具不如大厂。适合：小米用户、追求超长上下文',
   },
   'mimo-v2.5': {
     supplier: 'xiaomi',
     name: '小米 MiMo V2.5',
-    endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    endpoint: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions',
     protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1100000, vision: true,
     description: '🔓 开源旗舰，MIT协议完全免费商用——你可以把它部署在自己服务器上不花一分钱。缺点：API版性能稍逊Pro。适合：关注隐私或想自部署的用户',
   },
   'mimo-v2-pro': {
     supplier: 'xiaomi',
     name: '小米 MiMo V2 Pro',
-    endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    endpoint: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions',
     protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 1000000, vision: true,
     description: '💪 上一代旗舰，编程能力曾被市场广泛验证。缺点：已被V2.5全面超越。适合：对V2.5稳定性有顾虑时的备选',
   },
   'mimo-v2-omni': {
     supplier: 'xiaomi',
     name: '小米 MiMo V2 Omni',
-    endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    endpoint: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions',
     protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 256000, vision: true,
     description: '🎨 全模态融合——图片、语音、文字原生混合理解，不是"贴上去"的多模态。缺点：纯文本能力不如Pro。适合：需要语音+图片+文字混合交互',
   },
   'mimo-v2-flash': {
     supplier: 'xiaomi',
     name: '小米 MiMo V2 Flash',
-    endpoint: 'https://api.xiaomimimo.com/v1/chat/completions',
+    endpoint: 'https://token-plan-cn.xiaomimimo.com/v1/chat/completions',
     protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 256000, vision: true,
     description: '⚡ 极速版，每秒150字输出，便宜又快速。缺点：深度思考能力有限。适合：追求响应速度的日常对话',
   },
@@ -599,15 +599,18 @@ function parseAnthropicResponse(data) {
     return { error: 'API返回格式异常' };
   }
   const textParts = [];
+  const thinkingParts = [];
   const toolUses = [];
   for (const block of content) {
     if (block.type === 'text' && block.text) textParts.push(block.text);
+    if (block.type === 'thinking' && block.thinking) thinkingParts.push(block.thinking);
     if (block.type === 'tool_use') {
       toolUses.push({ id: block.id, name: block.name, input: block.input || {} });
     }
   }
   return {
     text: textParts.join('').trim(),
+    thinking: thinkingParts.join('').trim() || undefined,
     toolUses,
     stopReason: data.stop_reason || null,
     usage: data.usage || null,
@@ -622,6 +625,7 @@ function parseOpenAIResponse(data) {
   if (!choice) return { error: 'API返回格式异常' };
   const message = choice.message || {};
   const text = message.content || '';
+  const thinking = message.reasoning_content || undefined;
   const toolUses = [];
   if (message.tool_calls?.length) {
     for (const tc of message.tool_calls) {
@@ -632,6 +636,7 @@ function parseOpenAIResponse(data) {
   }
   return {
     text: text.trim(),
+    thinking,
     toolUses,
     stopReason: choice.finish_reason || null,
     usage: data.usage || null,
@@ -716,6 +721,7 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
 
   const contentBlocks = [];
   let accumulatedText = '';
+  let accumulatedThinking = '';
 
   try {
     for await (const frame of parser) {
@@ -729,14 +735,26 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
         switch (frame.event) {
           case 'content_block_start': {
             const block = frame.data?.content_block;
-            if (block) contentBlocks.push(block);
+            if (block) {
+              contentBlocks[frame.data?.index || 0] = block;
+            }
             break;
           }
           case 'content_block_delta': {
             const delta = frame.data?.delta;
+            const idx = frame.data?.index || 0;
+            const blockType = contentBlocks[idx]?.type;
             if (delta?.type === 'text_delta' && delta.text) {
-              accumulatedText += delta.text;
-              yield { type: 'text', text: delta.text, accumulated: accumulatedText };
+              if (blockType === 'thinking') {
+                accumulatedThinking += delta.text;
+                yield { type: 'think', text: delta.text, accumulated: accumulatedThinking };
+              } else {
+                accumulatedText += delta.text;
+                yield { type: 'text', text: delta.text, accumulated: accumulatedText };
+              }
+            } else if (delta?.type === 'thinking_delta' && delta.thinking) {
+              accumulatedThinking += delta.thinking;
+              yield { type: 'think', text: delta.thinking, accumulated: accumulatedThinking };
             } else if (delta?.type === 'input_json_delta' && delta.partial_json) {
               const idx = frame.data?.index || 0;
               if (!contentBlocks[idx]) {
@@ -773,6 +791,10 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
           if (delta?.content) {
             accumulatedText += delta.content;
             yield { type: 'text', text: delta.content, accumulated: accumulatedText };
+          }
+          if (delta?.reasoning_content) {
+            accumulatedThinking += delta.reasoning_content;
+            yield { type: 'think', text: delta.reasoning_content, accumulated: accumulatedThinking };
           }
           if (delta?.tool_calls?.length) {
             for (const tc of delta.tool_calls) {

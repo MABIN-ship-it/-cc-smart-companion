@@ -1150,7 +1150,9 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 0 4px 8px;
+  padding: 0 0 8px 0;
+  width: 100%;
+  max-width: 640px;
 }
 
 .input-file-chip {

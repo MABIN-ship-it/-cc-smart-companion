@@ -55,17 +55,6 @@ export function VoiceIcon({ enabled }) {
   );
 }
 
-export function VoiceCloneIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-      <line x1="12" y1="19" x2="12" y2="23"/>
-      <line x1="8" y1="23" x2="16" y2="23"/>
-    </svg>
-  );
-}
-
 export function MemoryIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -86,16 +75,15 @@ export function FolderIcon() {
 export function KnowledgeGraphIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="5" cy="5" r="2"/>
-      <circle cx="19" cy="5" r="2"/>
-      <circle cx="5" cy="19" r="2"/>
-      <circle cx="19" cy="19" r="2"/>
-      <circle cx="12" cy="12" r="2"/>
-      <line x1="6.7" y1="6.3" x2="10.5" y2="10.5"/>
-      <line x1="13.5" y1="13.5" x2="17.3" y2="17.7"/>
-      <line x1="17.3" y1="6.3" x2="13.5" y2="10.5"/>
-      <line x1="10.5" y1="13.5" x2="6.7" y2="17.7"/>
-      <line x1="6.7" y1="6.7" x2="10.5" y2="10.5"/>
+      <circle cx="5" cy="5" r="2.4" fill="rgba(124,58,237,0.12)"/>
+      <circle cx="19" cy="5" r="2.4" fill="rgba(124,58,237,0.12)"/>
+      <circle cx="5" cy="19" r="2.4" fill="rgba(124,58,237,0.12)"/>
+      <circle cx="19" cy="19" r="2.4" fill="rgba(124,58,237,0.12)"/>
+      <circle cx="12" cy="12" r="2.8" fill="rgba(124,58,237,0.22)" strokeWidth="2"/>
+      <line x1="6.6" y1="6.6" x2="10.2" y2="10.2"/>
+      <line x1="13.8" y1="13.8" x2="17.4" y2="17.4"/>
+      <line x1="17.4" y1="6.6" x2="13.8" y2="10.2"/>
+      <line x1="10.2" y1="13.8" x2="6.6" y2="17.4"/>
     </svg>
   );
 }
