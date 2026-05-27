@@ -12,7 +12,7 @@ import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
 import { getRelationship, recordConversation, getLevelInfo } from '../services/relationshipTracker';
 import { initNetworkMonitor, categorizeError, isRetryable, withRetry } from '../services/errorHandler';
-import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey } from '../services/modelAdapter';
+import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey, getSuppliers, getSupplierDefaultModel, getCustomProviders, saveCustomProvider, deleteCustomProvider, getExtraHeader, setExtraHeader } from '../services/modelAdapter';
 import { setWorkspaceContext } from '../services/toolRegistry';
 import { analyzeProject } from '../services/projectContext';
 import { addDocumentFromFile } from '../services/knowledgeBase';
@@ -57,6 +57,11 @@ export default function ChatInterface() {
   const [updateStatus, setUpdateStatus] = useState(null); // null | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [extraFieldValues, setExtraFieldValues] = useState({});
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customForm, setCustomForm] = useState({ name: '', endpoint: '', protocol: 'openai', apiKey: '' });
   const wasOfflineRef = useRef(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -758,18 +763,65 @@ export default function ChatInterface() {
     const model = getCurrentModel();
     setSelectedModel(model);
     setApiKeyInput(getApiKey(model) || '');
+    // 找到当前模型所属的供应商
+    const info = getAvailableModels().find(m => m.id === model);
+    setSelectedSupplier(info?.supplier || null);
+    setSearchQuery('');
+    setShowCustomForm(false);
+    setExtraFieldValues({});
     setShowApiModal(true);
   };
 
   const confirmApiKey = () => {
     const key = apiKeyInput.trim();
-    if (key) {
+    if (key && selectedSupplier) {
       setApiKey(selectedModel, key);
       dispatch({ type: 'SET_API_KEY', payload: key });
     }
     setCurrentModel(selectedModel);
     dispatch({ type: 'SET_MODEL', payload: selectedModel });
+    // 保存额外字段
+    if (Object.keys(extraFieldValues).length > 0 && selectedSupplier) {
+      Object.entries(extraFieldValues).forEach(([field, val]) => {
+        if (val) setExtraHeader(selectedModel, field, val);
+      });
+    }
     setShowApiModal(false);
+  };
+
+  const handleSupplierClick = (supplierId) => {
+    setSelectedSupplier(supplierId);
+    setSearchQuery('');
+    const defaultModel = getSupplierDefaultModel(supplierId);
+    if (defaultModel) {
+      setSelectedModel(defaultModel);
+      setApiKeyInput(getApiKey(defaultModel) || '');
+    } else {
+      setApiKeyInput('');
+    }
+    setExtraFieldValues({});
+  };
+
+  const handleBackToSuppliers = () => {
+    setSelectedSupplier(null);
+    setSearchQuery('');
+    setShowCustomForm(false);
+  };
+
+  const handleSaveCustomProvider = () => {
+    if (!customForm.name.trim() || !customForm.endpoint.trim()) return;
+    saveCustomProvider({
+      name: customForm.name.trim(),
+      endpoint: customForm.endpoint.trim(),
+      protocol: customForm.protocol,
+      apiKey: customForm.apiKey.trim(),
+    });
+    if (customForm.apiKey.trim()) {
+      setApiKey(customForm.name.trim(), customForm.apiKey.trim());
+    }
+    setCustomForm({ name: '', endpoint: '', protocol: 'openai', apiKey: '' });
+    setShowCustomForm(false);
+    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `已添加自定义供应商: ${customForm.name}`, type: 'system' } });
   };
 
   const toolsAvailable = typeof window !== 'undefined'
@@ -1025,60 +1077,199 @@ export default function ChatInterface() {
         </div>
       )}
 
-      {/* API Key Modal */}
+      {/* API Key Modal — 两层设计：供应商卡片 → 模型芯片 */}
       {showApiModal && (
-        <div className="api-modal-overlay" onClick={() => setShowApiModal(false)}>
+        <div className="api-modal-overlay" onClick={() => { setShowApiModal(false); setSelectedSupplier(null); }}>
           <div className="api-modal" onClick={e => e.stopPropagation()}>
             <h3>⚙️ 模型设置</h3>
 
-            <div>
-              <label>选择模型</label>
-              <select
-                value={selectedModel}
-                onChange={e => {
-                  const newModel = e.target.value;
-                  setSelectedModel(newModel);
-                  setApiKeyInput(getApiKey(newModel) || '');
-                }}
-                className="api-modal-select"
-              >
-                {getAvailableModels().map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}{m.vision ? ' 👁️' : ''} ({m.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI'})
-                  </option>
-                ))}
-              </select>
-              <div className="api-modal-context">
-                上下文窗口：{getAvailableModels().find(m => m.id === selectedModel)?.contextWindow?.toLocaleString() || '未知'} tokens
-              </div>
-              {(() => {
-                const desc = getAvailableModels().find(m => m.id === selectedModel)?.description;
-                return desc ? <div style={{ fontSize: '0.8rem', color: '#999', marginTop: 6, lineHeight: 1.5 }}>{desc}</div> : null;
-              })()}
-            </div>
-
-            <div>
-              <label>{getAvailableModels().find(m => m.id === selectedModel)?.apiKeyLabel || 'API Key'}</label>
+            {/* 搜索框 */}
+            {!selectedSupplier && !showCustomForm && (
               <input
-                ref={apiKeyInputRef}
-                type="password"
-                value={apiKeyInput}
-                onChange={e => setApiKeyInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmApiKey(); if (e.key === 'Escape') setShowApiModal(false); }}
-                placeholder="输入API Key..."
+                className="api-modal-search"
+                placeholder="搜索供应商..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
                 autoFocus
-                className="api-modal-input"
               />
-              <p className="api-modal-note">
-                Key仅保存在本地，不会上传任何服务器。支持DeepSeek、GPT、通义千问、智谱、豆包等主流模型。
-              </p>
-            </div>
+            )}
 
-            <div className="api-modal-actions">
-              <button className="api-modal-btn cancel" onClick={() => setShowApiModal(false)}>取消</button>
-              <button className={`api-modal-btn confirm ${apiKeyInput.trim() ? 'active' : ''}`} onClick={confirmApiKey}>确认</button>
-            </div>
+            {/* ── 第一层：供应商卡片列表 ── */}
+            {!selectedSupplier && !showCustomForm && (
+              <div className="supplier-list">
+                {getSuppliers()
+                  .filter(s => !searchQuery || s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.note.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(s => (
+                    <div
+                      key={s.id}
+                      className="supplier-card"
+                      onClick={() => handleSupplierClick(s.id)}
+                    >
+                      <div className="supplier-card-left">
+                        <div className="supplier-card-name">{s.name}</div>
+                        <div className="supplier-card-note">{s.note}</div>
+                        <div className="supplier-card-meta">{s.modelCount} 个模型</div>
+                      </div>
+                      <div className="supplier-card-right">
+                        <span className={`supplier-status ${s.hasKey ? 'configured' : ''}`}>
+                          {s.hasKey ? '已配置' : '未配置'}
+                        </span>
+                        {s.registerUrl && (
+                          <a
+                            className="supplier-register-link"
+                            href={s.registerUrl}
+                            onClick={e => e.stopPropagation()}
+                            target="_blank"
+                            rel="noreferrer"
+                          >注册 →</a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                <div
+                  className="supplier-card supplier-card-custom"
+                  onClick={() => setShowCustomForm(true)}
+                >
+                  <div className="supplier-card-left">
+                    <div className="supplier-card-name">+ 自定义供应商</div>
+                    <div className="supplier-card-note">兼容 OpenAI/Anthropic 协议的任意 API 端点</div>
+                  </div>
+                </div>
+              </div>
+            )}
 
+            {/* ── 自定义供应商表单 ── */}
+            {showCustomForm && !selectedSupplier && (
+              <div className="custom-form">
+                <div className="supplier-detail-back">
+                  <button onClick={() => setShowCustomForm(false)}>← 返回</button>
+                </div>
+                <label>供应商名称</label>
+                <input
+                  className="api-modal-input"
+                  value={customForm.name}
+                  onChange={e => setCustomForm({ ...customForm, name: e.target.value })}
+                  placeholder="例如：我的本地模型"
+                />
+                <label>API 端点</label>
+                <input
+                  className="api-modal-input"
+                  value={customForm.endpoint}
+                  onChange={e => setCustomForm({ ...customForm, endpoint: e.target.value })}
+                  placeholder="https://api.example.com/v1/chat/completions"
+                />
+                <label>协议</label>
+                <select
+                  className="api-modal-select"
+                  value={customForm.protocol}
+                  onChange={e => setCustomForm({ ...customForm, protocol: e.target.value })}
+                >
+                  <option value="openai">OpenAI 协议</option>
+                  <option value="anthropic">Anthropic 协议</option>
+                </select>
+                <label>API Key（可选）</label>
+                <input
+                  className="api-modal-input"
+                  type="password"
+                  value={customForm.apiKey}
+                  onChange={e => setCustomForm({ ...customForm, apiKey: e.target.value })}
+                  placeholder="输入 API Key..."
+                />
+                <button
+                  className="api-modal-btn confirm active"
+                  onClick={handleSaveCustomProvider}
+                  style={{ marginTop: 12, width: '100%' }}
+                >
+                  保存
+                </button>
+              </div>
+            )}
+
+            {/* ── 第二层：供应商详情 + 模型芯片 ── */}
+            {selectedSupplier && (() => {
+              const supplier = getSuppliers().find(s => s.id === selectedSupplier);
+              if (!supplier) return null;
+              const currentModelCfg = getAvailableModels().find(m => m.id === selectedModel);
+              return (
+                <div className="supplier-detail">
+                  <div className="supplier-detail-back">
+                    <button onClick={handleBackToSuppliers}>← 返回</button>
+                  </div>
+
+                  <div className="supplier-detail-info">
+                    <div className="supplier-detail-name">{supplier.name}</div>
+                    <div className="supplier-detail-note">{supplier.note}</div>
+                    {supplier.registerUrl && (
+                      <a href={supplier.registerUrl} target="_blank" rel="noreferrer" className="supplier-register-link">
+                        获取 Key →
+                      </a>
+                    )}
+                  </div>
+
+                  {/* API Key 输入 */}
+                  <div>
+                    <label>{supplier.apiKeyLabel}</label>
+                    <input
+                      ref={apiKeyInputRef}
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={e => setApiKeyInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') confirmApiKey(); if (e.key === 'Escape') setShowApiModal(false); }}
+                      placeholder="输入API Key..."
+                      autoFocus
+                      className="api-modal-input"
+                    />
+                  </div>
+
+                  {/* 额外字段（如百度 appid） */}
+                  {supplier.extraFields && supplier.extraFields.map(field => (
+                    <div key={field}>
+                      <label>{field === 'appid' ? '百度千帆 AppID' : field}</label>
+                      <input
+                        className="api-modal-input"
+                        value={extraFieldValues[field] || ''}
+                        onChange={e => setExtraFieldValues(prev => ({ ...prev, [field]: e.target.value }))}
+                        placeholder={`输入 ${field}...`}
+                      />
+                    </div>
+                  ))}
+
+                  {/* 模型芯片 */}
+                  <div>
+                    <label>选择模型</label>
+                    <div className="model-chips">
+                      {supplier.models.map(m => (
+                        <div
+                          key={m.id}
+                          className={`model-chip ${selectedModel === m.id ? 'active' : ''}`}
+                          data-tooltip={m.description}
+                          onClick={() => {
+                            setSelectedModel(m.id);
+                            setApiKeyInput(getApiKey(m.id) || '');
+                          }}
+                        >
+                          <span className="model-chip-icon">{m.vision ? '👁️' : '💬'}</span>
+                          <span className="model-chip-name">{m.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="api-modal-context">
+                      上下文：{currentModelCfg?.contextWindow?.toLocaleString() || '未知'} tokens | {currentModelCfg?.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI'} 协议
+                    </div>
+                    {currentModelCfg?.description && (
+                      <div className="model-description">{currentModelCfg.description}</div>
+                    )}
+                  </div>
+
+                  <div className="api-modal-actions">
+                    <button className="api-modal-btn cancel" onClick={() => setShowApiModal(false)}>取消</button>
+                    <button className={`api-modal-btn confirm ${apiKeyInput.trim() ? 'active' : ''}`} onClick={confirmApiKey}>确认</button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── 底部重置 ── */}
             <div className="api-modal-reset">
               <span onClick={() => {
                 try { localStorage.removeItem('cc_onboarding_done'); } catch {}
