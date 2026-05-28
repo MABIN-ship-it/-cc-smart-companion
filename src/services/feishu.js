@@ -103,6 +103,25 @@ export async function getTenantAccessToken() {
   return data.tenant_access_token;
 }
 
+// ─── 租户域名 ─────────────────────────────────────
+
+let cachedTenantDomain = null;
+
+export async function getFeishuTenantDomain() {
+  if (cachedTenantDomain) return cachedTenantDomain;
+  try {
+    const result = await feishuApi('GET', '/tenant/v2/tenant/query');
+    cachedTenantDomain = result.data?.tenant?.domain;
+    if (cachedTenantDomain) return cachedTenantDomain;
+  } catch { /* 静默回退 */ }
+  return 'bytedance'; // 保底回退
+}
+
+export function getFeishuWebUrl(type, id) {
+  // type: 'docx', 'base', 'mindnotes', 'sheets'
+  return `https://${cachedTenantDomain || 'bytedance'}.feishu.cn/${type}/${id}`;
+}
+
 // ─── 通用 API 请求 ─────────────────────────────────────
 
 export async function feishuApi(method, path, body = null) {
@@ -222,6 +241,7 @@ export async function getUserInfo() {
 // ─── 云文档 ─────────────────────────────────────
 
 export async function createDocument(title, content) {
+  await getFeishuTenantDomain();
   const createResult = await feishuApi('POST', '/docx/v1/documents', { title });
   const documentId = createResult.data?.document?.document_id;
   if (!documentId) throw new Error('创建文档失败：未获取到文档ID');
@@ -242,7 +262,7 @@ export async function createDocument(title, content) {
   return {
     success: true,
     documentId,
-    url: `https://bytedance.feishu.cn/docx/${documentId}`,
+    url: getFeishuWebUrl('docx', documentId),
     title,
   };
 }
@@ -297,9 +317,14 @@ export async function appendDocumentBlocks(documentId, blocks) {
 // ─── 多维表格 ─────────────────────────────────────
 
 export async function createBase(name, folderToken) {
+  await getFeishuTenantDomain();
   const body = { name };
   if (folderToken) body.folder_token = folderToken;
   const result = await feishuApi('POST', '/bitable/v1/apps', body);
+  const appToken = result.data?.app?.app_token;
+  if (!result.data?.app?.url && appToken) {
+    result.data.app.url = getFeishuWebUrl('base', appToken);
+  }
   return result.data;
 }
 

@@ -3,7 +3,7 @@
  *
  * 全部通过 feishu.js 的 feishuApi() 函数调用，统一 token 管理和错误处理。
  */
-import { feishuApi, getFeishuConfig } from './feishu';
+import { feishuApi, getFeishuConfig, getFeishuTenantDomain, getFeishuWebUrl } from './feishu';
 
 const FEISHU_BASE_URL = 'https://open.feishu.cn/open-apis';
 
@@ -222,11 +222,12 @@ export async function createMindNote(title, nodes = []) {
     title,
     content: { children: toMindNodes(nodes) },
   };
+  await getFeishuTenantDomain();
   const result = await feishuApi('POST', '/mind_notes/v1/mind_notes', body);
   const mindNoteId = result.data?.mind_note?.mind_note_id;
   return {
     ...result.data,
-    url: mindNoteId ? `https://bytedance.feishu.cn/mindnotes/${mindNoteId}` : undefined,
+    url: mindNoteId ? getFeishuWebUrl('mindnotes', mindNoteId) : undefined,
   };
 }
 

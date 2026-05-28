@@ -1194,6 +1194,35 @@ async function feishuGetToken() {
   });
 }
 
+let cachedFeishuDomain = null;
+
+async function feishuGetTenantDomain() {
+  if (cachedFeishuDomain) return cachedFeishuDomain;
+  try {
+    const token = await feishuGetToken();
+    const result = await new Promise((resolve, reject) => {
+      https.get({
+        hostname: 'open.feishu.cn',
+        path: '/open-apis/tenant/v2/tenant/query',
+        headers: { 'Authorization': `Bearer ${token}` },
+        timeout: 10000,
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try { resolve(JSON.parse(data)); }
+          catch (e) { reject(e); }
+        });
+      }).on('error', reject);
+    });
+    if (result.code === 0 && result.data?.tenant?.domain) {
+      cachedFeishuDomain = result.data.tenant.domain;
+      return cachedFeishuDomain;
+    }
+  } catch { /* 静默回退 */ }
+  return 'bytedance';
+}
+
 /**
  * 封装文件 part，避免 Object.assign 污染 Buffer 的可枚举属性
  */
@@ -1617,7 +1646,9 @@ ipcMain.handle('feishu:importToCloudDoc', async (_event, filePath, targetType) =
 
       if (pollResult.code === 0 && pollResult.data?.job_status === 0) {
         const result = pollResult.data.result || {};
-        const docUrl = result.url || `https://bytedance.feishu.cn/${importType}/${result.token || ''}`;
+        const domain = await feishuGetTenantDomain();
+        const pathType = importType === 'sheet' ? 'sheets' : importType;
+        const docUrl = result.url || `https://${domain}.feishu.cn/${pathType}/${result.token || ''}`;
         console.log(`[ImportTask] 导入完成: ${docUrl}`);
         return { success: true, url: docUrl, token: result.token, type: importType, fileName };
       }
