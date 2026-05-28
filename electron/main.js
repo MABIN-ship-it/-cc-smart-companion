@@ -1201,10 +1201,11 @@ async function feishuGetTenantDomain() {
   if (cachedFeishuDomain) return cachedFeishuDomain;
   try {
     const token = await feishuGetToken();
+    // 从云盘文件列表提取租户域名（已有 docx:document 权限，无需额外权限）
     const result = await new Promise((resolve, reject) => {
       https.get({
         hostname: 'open.feishu.cn',
-        path: '/open-apis/tenant/v2/tenant/query',
+        path: '/open-apis/drive/v1/files?page_size=5',
         headers: { 'Authorization': `Bearer ${token}` },
         timeout: 10000,
       }, (res) => {
@@ -1216,9 +1217,12 @@ async function feishuGetTenantDomain() {
         });
       }).on('error', reject);
     });
-    if (result.code === 0 && result.data?.tenant?.domain) {
-      cachedFeishuDomain = result.data.tenant.domain;
-      return cachedFeishuDomain;
+    const files = result.data?.files || [];
+    for (const f of files) {
+      if (f.url) {
+        const m = f.url.match(/https:\/\/([^.]+)\.feishu\.cn\//);
+        if (m) { cachedFeishuDomain = m[1]; return cachedFeishuDomain; }
+      }
     }
   } catch { /* 静默回退 */ }
   return 'bytedance';

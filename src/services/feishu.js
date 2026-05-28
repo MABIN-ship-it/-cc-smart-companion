@@ -110,11 +110,17 @@ let cachedTenantDomain = null;
 export async function getFeishuTenantDomain() {
   if (cachedTenantDomain) return cachedTenantDomain;
   try {
-    const result = await feishuApi('GET', '/tenant/v2/tenant/query');
-    cachedTenantDomain = result.data?.tenant?.domain;
-    if (cachedTenantDomain) return cachedTenantDomain;
+    // 从云盘文件列表提取租户域名（无需 tenant API 权限）
+    const result = await feishuApi('GET', '/drive/v1/files?page_size=5');
+    const files = result.data?.files || [];
+    for (const f of files) {
+      if (f.url) {
+        const m = f.url.match(/https:\/\/([^.]+)\.feishu\.cn\//);
+        if (m) { cachedTenantDomain = m[1]; return cachedTenantDomain; }
+      }
+    }
   } catch { /* 静默回退 */ }
-  return 'bytedance'; // 保底回退
+  return 'bytedance';
 }
 
 export function getFeishuWebUrl(type, id) {
