@@ -257,8 +257,12 @@ export async function feishuSearchContacts(input) {
 
   try {
     const contacts = await searchContacts(query);
-    if (contacts?.items?.length) {
-      return `找到${contacts.items.length}个联系人：\n${contacts.items.map(c => `- ${c.name || c.id}`).join('\n')}`;
+    const items = contacts?.items || contacts?.users || [];
+    if (Array.isArray(contacts) && contacts.length) {
+      return `找到${contacts.length}个联系人：\n${contacts.map(c => `- ${c.name || c.display_name || c.user_id || c.id}（ID: ${c.open_id || c.user_id || c.id}）`).join('\n')}`;
+    }
+    if (items.length) {
+      return `找到${items.length}个联系人：\n${items.map(c => `- ${c.name || c.display_name || c.user_id || c.id}（ID: ${c.open_id || c.user_id || c.id}）`).join('\n')}`;
     }
     return `未找到与"${query}"相关的联系人`;
   } catch (e) {

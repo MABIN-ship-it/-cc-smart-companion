@@ -208,7 +208,10 @@ export async function getUserList({ pageSize = 50, pageToken } = {}) {
 
 export async function searchContacts(query) {
   const result = await feishuApi('GET', `/search/v1/contact?query=${encodeURIComponent(query)}`);
-  return result.data || [];
+  const data = result.data || {};
+  // 飞书返回可能是数组或 { items: [] }，统一为 { items: [] }
+  if (Array.isArray(data)) return { items: data };
+  return data;
 }
 
 export async function getUserInfo() {
@@ -468,17 +471,14 @@ export function clearMyUserInfo() {
 // ─── 权限自检 ─────────────────────────────────────
 
 const PERMISSION_CHECKS = [
-  { domain: 'im', label: '消息/图片/文件', scope: 'im:message, im:chat, im:resource', test: { method: 'GET', path: '/im/v1/chats?page_size=1' } },
-  { domain: 'docx', label: '云文档', scope: 'docx:document', test: { method: 'GET', path: '/docx/v1/documents?page_size=1' } },
-  { domain: 'bitable', label: '多维表格', scope: 'bitable:app', test: { method: 'GET', path: '/bitable/v1/apps?page_size=1' } },
-  { domain: 'contact', label: '通讯录', scope: 'contact:contact', test: { method: 'GET', path: '/contact/v3/users?page_size=1' } },
-  { domain: 'calendar', label: '日历', scope: 'calendar:calendar', test: { method: 'GET', path: '/calendar/v4/calendars' } },
-  { domain: 'task', label: '任务', scope: 'task:task', test: { method: 'GET', path: '/task/v2/tasks?page_size=1' } },
-  { domain: 'approval', label: '审批', scope: 'approval:instance', test: { method: 'GET', path: '/approval/v4/instances?page_size=1' } },
-  { domain: 'wiki', label: '知识库', scope: 'wiki:wiki', test: { method: 'GET', path: '/wiki/v2/spaces?page_size=1' } },
-  { domain: 'mail', label: '邮件', scope: 'mail:mail', test: { method: 'GET', path: '/mail/v1/user_mailboxes' } },
-  { domain: 'minutes', label: '妙记', scope: 'minutes:minute', test: { method: 'GET', path: '/minutes/v1/minutes/search?page_size=1' } },
-  { domain: 'mind_notes', label: '思维导图', scope: 'mind_notes:mind_note', test: { method: 'GET', path: '/mind_notes/v1/mind_notes?page_size=1' } },
+  { domain: 'im',       label: '消息/图片/文件', scope: 'im:message, im:chat, im:resource',   test: { method: 'GET', path: '/im/v1/chats?page_size=1' } },
+  { domain: 'docx',     label: '云文档',          scope: 'docx:document',                       test: { method: 'GET', path: '/drive/v1/files?page_size=1' } },
+  { domain: 'bitable',  label: '多维表格',        scope: 'bitable:app',                         test: { method: 'GET', path: '/drive/v1/files?page_size=1' } },
+  { domain: 'contact',  label: '通讯录',          scope: 'contact:contact',                     test: { method: 'GET', path: '/contact/v3/users?page_size=1' } },
+  { domain: 'calendar', label: '日历',            scope: 'calendar:calendar',                   test: { method: 'GET', path: '/calendar/v4/calendars' } },
+  { domain: 'task',     label: '任务',            scope: 'task:task',                           test: { method: 'GET', path: '/task/v2/tasks?page_size=1' } },
+  { domain: 'approval', label: '审批',            scope: 'approval:instance',                   test: { method: 'GET', path: '/approval/v4/instances?page_size=1&user_id_type=open_id' } },
+  { domain: 'wiki',     label: '知识库',          scope: 'wiki:wiki',                           test: { method: 'GET', path: '/wiki/v2/spaces?page_size=1' } },
 ];
 
 // ─── 所需 OAuth Scope 列表（一键复制用）──────────
