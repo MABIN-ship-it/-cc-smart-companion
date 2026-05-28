@@ -288,23 +288,27 @@ export async function feishuBaseOperation(input) {
   }
 
   if (operation === 'add_record') {
-    if (!app_token || !table_id || !record) return '请提供 app_token、table_id 和 record(fields对象，字段名必须与表中已有字段一致)';
+    if (!app_token || !table_id || !record) return '请提供 app_token、table_id 和 record(字段对象)';
     try {
-      const result = await addBaseRecord(app_token, table_id, record);
+      // 自动标准化：接受 {fields:{...}} 或 直接的 {...}
+      const fields = record.fields || record;
+      const result = await addBaseRecord(app_token, table_id, fields);
       return `记录已添加，record_id: ${result.record?.record_id || 'unknown'}`;
     } catch (e) {
-      return `添加记录失败: ${e.message}。提示：请先用 list_fields 确认表中已有字段名，record的字段名必须完全匹配。`;
+      return `添加记录失败: ${e.message}。请先用 list_fields 确认表中字段名。`;
     }
   }
 
   if (operation === 'add_records') {
     if (!app_token || !table_id) return '请提供 app_token 和 table_id';
     const { records } = input || {};
-    if (!records?.length) return '请提供 records 数组，每项为 { fields: {...} }';
+    if (!records?.length) return '请提供 records 数组';
     try {
-      const result = await batchAddBaseRecords(app_token, table_id, records);
+      // 自动标准化：每项接受 {fields:{...}} 或 直接的 {...}
+      const normalized = records.map(r => ({ fields: r.fields || r }));
+      const result = await batchAddBaseRecords(app_token, table_id, normalized);
       if (result.inserted === 0) {
-        return `批量添加失败：请求了 ${result.requested} 条，但实际写入 0 条。可能原因：字段名不匹配、字段类型错误。请先用 list_fields 确认表中字段名。`;
+        return `批量添加失败：请求了 ${result.requested} 条，实际写入 0 条。可能原因：字段名不匹配、字段类型错误。请先用 list_fields 确认表中字段名。`;
       }
       if (result.inserted < result.requested) {
         return `部分写入成功：请求 ${result.requested} 条，实际写入 ${result.inserted} 条（${result.requested - result.inserted} 条失败）。`;
