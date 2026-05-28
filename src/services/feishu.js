@@ -498,7 +498,19 @@ export function getRequiredScopes() {
 }
 
 export async function copyScopeToClipboard(scope) {
-  await navigator.clipboard.writeText(scope);
+  try {
+    await navigator.clipboard.writeText(scope);
+  } catch {
+    // Electron contextIsolation 下 clipboard API 可能不可用，回退到 execCommand
+    const ta = document.createElement('textarea');
+    ta.value = scope;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
   return scope;
 }
 
