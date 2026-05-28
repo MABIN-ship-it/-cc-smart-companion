@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { exec, execSync, spawn } = require('child_process');
 const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
 let autoUpdater;
 try {
   autoUpdater = require('electron-updater').autoUpdater;
@@ -1403,6 +1404,20 @@ function extractExcelSheets(workbook) {
   return sheets.join('\n\n').slice(0, 200000);
 }
 
+function extractXlsSheets(workbook) {
+  const sheets = workbook.SheetNames.map(name => {
+    const sheet = workbook.Sheets[name];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    const rows = data.filter(row => row.some(cell => cell !== ''));
+    if (!rows.length) return '';
+    const header = rows[0].map(c => String(c)).join('\t');
+    const dataRows = rows.length - 1;
+    const tabRows = rows.map(row => row.map(c => String(c)).join('\t'));
+    return `[工作表: ${name} | 总行数: ${rows.length} | 表头: ${header} | 数据行: ${dataRows}]\n${tabRows.join('\n')}`;
+  }).filter(Boolean);
+  return sheets.join('\n\n').slice(0, 200000);
+}
+
 // ====== 飞书资源下载（从消息中下载文件/图片）======
 
 ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, type, preferredFileName) => {
@@ -1506,40 +1521,13 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
         await workbook.xlsx.load(buffer);
         result.textContent = extractExcelSheets(workbook);
       } catch {
-        // .xls 旧格式尝试 Python 转换后重试
+        // .xls 旧格式用 SheetJS 原生读取（Node.js，无编码问题）
         if (ext === '.xls') {
           try {
-            const xlsxPath = filePath.replace(/\.xls$/i, '_converted.xlsx');
-            const pyScript = `import sys
-try:
-    import pandas as pd
-    df = pd.read_excel(r"${filePath.replace(/\\/g, '/')}", sheet_name=None, engine='xlrd')
-    with pd.ExcelWriter(r"${xlsxPath.replace(/\\/g, '/')}", engine='openpyxl') as w:
-        for name, sheet in df.items():
-            sheet.to_excel(w, sheet_name=name, index=False)
-    print('OK')
-except Exception as e:
-    print('FAIL:' + str(e))
-`;
-            const tmpPy = filePath.replace(/\.xls$/i, '.py');
-            fs.writeFileSync(tmpPy, pyScript, 'utf-8');
-            const { stdout } = await new Promise((resolve) => {
-              exec(`python "${tmpPy}"`, { timeout: 30000, windowsHide: true }, (_err, _stdout, _stderr) => {
-                resolve({ stdout: (_stdout || '') + (_stderr || '') });
-              });
-            });
-            try { fs.unlinkSync(tmpPy); } catch {}
-            if (stdout.includes('OK') && fs.existsSync(xlsxPath)) {
-              const xlsxBuf = fs.readFileSync(xlsxPath);
-              const wb2 = new ExcelJS.Workbook();
-              await wb2.xlsx.load(xlsxBuf);
-              result.textContent = extractExcelSheets(wb2);
-              try { fs.unlinkSync(xlsxPath); } catch {}
-            } else {
-              result.textContent = '[此文件为旧版 .xls 格式，请用 Excel/WPS 另存为 .xlsx 后重新发送]';
-            }
+            const wb = XLSX.read(buffer, { type: 'buffer' });
+            result.textContent = extractXlsSheets(wb);
           } catch {
-            result.textContent = '[此文件为旧版 .xls 格式，请用 Excel/WPS 另存为 .xlsx 后重新发送]';
+            result.textContent = '[此文件为旧版 .xls 格式无法解析，请用 Excel/WPS 另存为 .xlsx 后重新发送]';
           }
         }
       }
