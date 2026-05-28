@@ -1430,9 +1430,9 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
         if (!parsedName && preferredFileName) parsedName = preferredFileName;
         if (!parsedName) parsedName = `${fileKey}.bin`;
 
-        resolve({ chunks, contentType, fileName: parsedName });
         res.on('data', chunk => chunks.push(chunk));
         res.on('end', () => resolve({ chunks, contentType, fileName: parsedName }));
+        res.on('error', reject);
       });
       req.on('error', reject);
       req.on('timeout', () => { req.destroy(); reject(new Error('下载超时(30s)')); });
