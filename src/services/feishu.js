@@ -468,9 +468,7 @@ export function clearMyUserInfo() {
 // ─── 权限自检 ─────────────────────────────────────
 
 const PERMISSION_CHECKS = [
-  { domain: 'im', label: '消息', scope: 'im:chat', test: { method: 'GET', path: '/im/v1/chats?page_size=1' } },
-  { domain: 'im_image', label: '图片上传', scope: 'im:image', test: { method: 'GET', path: '/im/v1/images' } },
-  { domain: 'im_file', label: '文件上传', scope: 'im:file', test: { method: 'GET', path: '/im/v1/files' } },
+  { domain: 'im', label: '消息/图片/文件', scope: 'im:message, im:chat, im:resource', test: { method: 'GET', path: '/im/v1/chats?page_size=1' } },
   { domain: 'docx', label: '云文档', scope: 'docx:document', test: { method: 'GET', path: '/docx/v1/documents?page_size=1' } },
   { domain: 'bitable', label: '多维表格', scope: 'bitable:app', test: { method: 'GET', path: '/bitable/v1/apps?page_size=1' } },
   { domain: 'contact', label: '通讯录', scope: 'contact:contact', test: { method: 'GET', path: '/contact/v3/users?page_size=1' } },
@@ -486,8 +484,7 @@ const PERMISSION_CHECKS = [
 // ─── 所需 OAuth Scope 列表（一键复制用）──────────
 
 const REQUIRED_SCOPES = [
-  'im:message', 'im:message:send_as_bot', 'im:chat', 'im:chat:readonly',
-  'im:image', 'im:file',
+  'im:message', 'im:message:send_as_bot', 'im:chat', 'im:chat:readonly', 'im:resource',
   'docx:document', 'docx:document:create', 'bitable:app', 'wiki:wiki',
   'contact:contact', 'contact:user', 'calendar:calendar',
   'approval:instance', 'task:task', 'mail:mail', 'minutes:minute', 'mind_notes:mind_note',
@@ -582,8 +579,7 @@ export function getSetupGuide() {
 - im:message:send_as_bot（以机器人身份发消息）
 - im:chat（获取群信息）
 - im:chat:readonly（读取群信息）
-- im:image（上传图片）
-- im:file（上传文件）
+- im:resource（上传和获取图片/文件资源）
 
 **文档与知识：**
 - docx:document（云文档读写）
