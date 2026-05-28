@@ -3,7 +3,7 @@
  */
 import { useState } from 'react';
 import { useApp } from '../store/AppContext';
-import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection, checkPermissions, getFeishuPermissionUrl, copyScopesToClipboard } from '../services/feishu';
+import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection, checkPermissions, getFeishuPermissionUrl, copyScopeToClipboard } from '../services/feishu';
 import { getBotConfig, saveBotConfig, getMonitorableChats, getBotStats } from '../services/feishuBotService';
 
 /* 飞书品牌风格图标 — 蓝色圆角方底+白色抽象对话图形 */
@@ -317,16 +317,6 @@ export default function ToolboxPanel() {
                     </button>
                     <button
                       className="feishu-perm-check-btn"
-                      onClick={async () => {
-                        const n = await copyScopesToClipboard();
-                        setConfigMsg(`info||已复制 ${n} 个 scope 到剪贴板，到飞书权限页面搜索粘贴即可`);
-                      }}
-                      title="复制所有需要的 scope 到剪贴板"
-                    >
-                      复制所需权限
-                    </button>
-                    <button
-                      className="feishu-perm-check-btn"
                       onClick={handleCheckPermissions}
                       disabled={checkingPerms}
                     >
@@ -341,18 +331,30 @@ export default function ToolboxPanel() {
                           <span className="feishu-perm-label">{r.label}</span>
                           <span className="feishu-perm-domain">{r.domain}</span>
                           {!r.ok && (
-                            <a
-                              href="#"
-                              className="feishu-perm-goto"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                const url = getFeishuPermissionUrl();
-                                window.electronAPI?.openExternal(url);
-                              }}
-                              title="在浏览器中打开飞书权限管理页面"
-                            >
-                              去开通
-                            </a>
+                            <>
+                              <button
+                                className="feishu-perm-copy-btn"
+                                onClick={async () => {
+                                  const s = await copyScopeToClipboard(r.scope || r.domain);
+                                  setConfigMsg(`info||已复制 ${s}，到权限页面搜索粘贴即可`);
+                                }}
+                                title={`复制 ${r.scope || r.domain} 到剪贴板`}
+                              >
+                                复制
+                              </button>
+                              <a
+                                href="#"
+                                className="feishu-perm-goto"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  const url = getFeishuPermissionUrl();
+                                  window.electronAPI?.openExternal(url);
+                                }}
+                                title="在浏览器中打开飞书权限管理页面"
+                              >
+                                去开通
+                              </a>
+                            </>
                           )}
                         </div>
                       ))}

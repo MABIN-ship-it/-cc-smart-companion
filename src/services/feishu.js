@@ -468,23 +468,26 @@ export function clearMyUserInfo() {
 // ─── 权限自检 ─────────────────────────────────────
 
 const PERMISSION_CHECKS = [
-  { domain: 'im', label: '消息', test: { method: 'GET', path: '/im/v1/chats?page_size=1' } },
-  { domain: 'docx', label: '云文档', test: { method: 'GET', path: '/docx/v1/documents?page_size=1' } },
-  { domain: 'bitable', label: '多维表格', test: { method: 'GET', path: '/bitable/v1/apps?page_size=1' } },
-  { domain: 'contact', label: '通讯录', test: { method: 'GET', path: '/contact/v3/users?page_size=1' } },
-  { domain: 'calendar', label: '日历', test: { method: 'GET', path: '/calendar/v4/calendars' } },
-  { domain: 'task', label: '任务', test: { method: 'GET', path: '/task/v2/tasks?page_size=1' } },
-  { domain: 'approval', label: '审批', test: { method: 'GET', path: '/approval/v4/instances?page_size=1' } },
-  { domain: 'wiki', label: '知识库', test: { method: 'GET', path: '/wiki/v2/spaces?page_size=1' } },
-  { domain: 'mail', label: '邮件', test: { method: 'GET', path: '/mail/v1/user_mailboxes' } },
-  { domain: 'minutes', label: '妙记', test: { method: 'GET', path: '/minutes/v1/minutes/search?page_size=1' } },
-  { domain: 'mind_notes', label: '思维导图', test: { method: 'GET', path: '/mind_notes/v1/mind_notes?page_size=1' } },
+  { domain: 'im', label: '消息', scope: 'im:chat', test: { method: 'GET', path: '/im/v1/chats?page_size=1' } },
+  { domain: 'im_image', label: '图片上传', scope: 'im:image', test: { method: 'GET', path: '/im/v1/images' } },
+  { domain: 'im_file', label: '文件上传', scope: 'im:file', test: { method: 'GET', path: '/im/v1/files' } },
+  { domain: 'docx', label: '云文档', scope: 'docx:document', test: { method: 'GET', path: '/docx/v1/documents?page_size=1' } },
+  { domain: 'bitable', label: '多维表格', scope: 'bitable:app', test: { method: 'GET', path: '/bitable/v1/apps?page_size=1' } },
+  { domain: 'contact', label: '通讯录', scope: 'contact:contact', test: { method: 'GET', path: '/contact/v3/users?page_size=1' } },
+  { domain: 'calendar', label: '日历', scope: 'calendar:calendar', test: { method: 'GET', path: '/calendar/v4/calendars' } },
+  { domain: 'task', label: '任务', scope: 'task:task', test: { method: 'GET', path: '/task/v2/tasks?page_size=1' } },
+  { domain: 'approval', label: '审批', scope: 'approval:instance', test: { method: 'GET', path: '/approval/v4/instances?page_size=1' } },
+  { domain: 'wiki', label: '知识库', scope: 'wiki:wiki', test: { method: 'GET', path: '/wiki/v2/spaces?page_size=1' } },
+  { domain: 'mail', label: '邮件', scope: 'mail:mail', test: { method: 'GET', path: '/mail/v1/user_mailboxes' } },
+  { domain: 'minutes', label: '妙记', scope: 'minutes:minute', test: { method: 'GET', path: '/minutes/v1/minutes/search?page_size=1' } },
+  { domain: 'mind_notes', label: '思维导图', scope: 'mind_notes:mind_note', test: { method: 'GET', path: '/mind_notes/v1/mind_notes?page_size=1' } },
 ];
 
 // ─── 所需 OAuth Scope 列表（一键复制用）──────────
 
 const REQUIRED_SCOPES = [
   'im:message', 'im:message:send_as_bot', 'im:chat', 'im:chat:readonly',
+  'im:image', 'im:file',
   'docx:document', 'docx:document:create', 'bitable:app', 'wiki:wiki',
   'contact:contact', 'contact:user', 'calendar:calendar',
   'approval:instance', 'task:task', 'mail:mail', 'minutes:minute', 'mind_notes:mind_note',
@@ -494,10 +497,9 @@ export function getRequiredScopes() {
   return [...REQUIRED_SCOPES];
 }
 
-export async function copyScopesToClipboard() {
-  const text = REQUIRED_SCOPES.join('\n');
-  await navigator.clipboard.writeText(text);
-  return REQUIRED_SCOPES.length;
+export async function copyScopeToClipboard(scope) {
+  await navigator.clipboard.writeText(scope);
+  return scope;
 }
 
 export function getFeishuPermissionUrl() {
@@ -512,12 +514,12 @@ export function getFeishuPermissionUrl() {
  */
 export async function checkPermissions() {
   const results = await Promise.all(
-    PERMISSION_CHECKS.map(async ({ domain, label, test }) => {
+    PERMISSION_CHECKS.map(async ({ domain, label, scope, test }) => {
       try {
         await feishuApi(test.method, test.path);
-        return { domain, label, ok: true };
+        return { domain, label, scope, ok: true };
       } catch (e) {
-        return { domain, label, ok: false, error: e.message };
+        return { domain, label, scope, ok: false, error: e.message };
       }
     })
   );
@@ -560,7 +562,7 @@ export function getSetupGuide() {
 
 ### 第三步：配置权限（关键！）
 连接成功后，CC 会自动检测权限状态。
-推荐使用 CC 面板中的「一键打开权限页面」+「复制所需权限」快速配置，
+推荐使用 CC 面板中的「一键打开权限页面」跳转到权限管理页，再逐项点击"复制"按钮复制 scope 到搜索框搜索开通，
 或手动在飞书开发者后台 "权限管理" 中搜索并开通以下权限：
 
 **消息与群聊：**
@@ -568,6 +570,8 @@ export function getSetupGuide() {
 - im:message:send_as_bot（以机器人身份发消息）
 - im:chat（获取群信息）
 - im:chat:readonly（读取群信息）
+- im:image（上传图片）
+- im:file（上传文件）
 
 **文档与知识：**
 - docx:document（云文档读写）
