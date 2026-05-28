@@ -132,7 +132,7 @@ export default function ChatInterface() {
     }
 
     // Initialize KnowledgeSystem (await migration)
-    const ks = getKnowledgeSystem({ sendModelRequest });
+    const ks = getKnowledgeSystem();
     if (ks) {
       (async () => {
         try {
@@ -336,20 +336,20 @@ export default function ChatInterface() {
       unsubFeishuMsg = window.electronAPI.onFeishuMessage((data) => {
         dispatchFeishuMessage(data);
 
-        // Bot 自动回复（私聊+群聊@CC）
+        const text = extractTextFromEvent(data);
+        if (!text) return;
+
+        // Bot 自动回复（私聊+群聊@CC，火后即忘）
         handleIncomingMessage(data).catch(() => {});
 
+        // 增强元数据（可选，不阻塞主流程）
         const msgCtx = extractMessageContext(data);
-        if (!msgCtx) return;
+        const chatId = data?.event?.message?.chat_id || data?.message?.chat_id || '';
+        const chatType = data?.event?.message?.chat_type || data?.message?.chat_type || 'private';
 
-        // 提取会话元数据 → 统一会话路由
-        const eventMsg = data?.event?.message || data?.message || {};
-        const chatId = eventMsg.chat_id || '';
-        const chatType = eventMsg.chat_type || 'private';
-        const senderId = data?.event?.sender?.sender_id?.open_id || data?.sender?.sender_id?.open_id || '';
-
-        // 首次联系 → 记住这个会话，后续所有通知都发到这里
+        // 首次联系 → 记住这个会话
         if (!getDefaultReceiveContext()) {
+          const senderId = data?.event?.sender?.sender_id?.open_id || data?.sender?.sender_id?.open_id || '';
           if (chatType === 'group' && chatId) {
             setDefaultReceiveContext('chat_id', chatId);
           } else if (chatType === 'private' && senderId) {
@@ -357,29 +357,31 @@ export default function ChatInterface() {
           }
         }
 
-        const msgText = msgCtx.text || msgCtx.description || '';
-        let enhancedText = `[来自飞书] ${msgText}`;
-        if (msgCtx.docUrls?.length) {
+        // 构造增强消息（元数据作为补充信息附加）
+        let enhancedText = `[来自飞书] ${text}`;
+        if (msgCtx?.docUrls?.length) {
           enhancedText += `\n[消息含${msgCtx.docUrls.length}个飞书文档链接，可使用feishu_read_document读取: ${msgCtx.docUrls.map(d => d.url).join(', ')}]`;
         }
-        if (msgCtx.fileKey) {
+        if (msgCtx?.fileKey) {
           enhancedText += `\n[消息含文件: ${msgCtx.fileName || '未知文件'}, message_id: ${msgCtx.messageId}, file_key: ${msgCtx.fileKey}，可用feishu_download_resource下载查看]`;
         }
-        if (msgCtx.imageKey && !msgCtx.fileKey) {
+        if (msgCtx?.imageKey && !msgCtx?.fileKey) {
           enhancedText += `\n[消息含图片, message_id: ${msgCtx.messageId}, image_key: ${msgCtx.imageKey}，可用feishu_download_resource下载查看]`;
         }
 
-        // 群聊消息 → 回复到群里，私聊消息 → 回复给发送者
+        // 群聊消息 → 回复到群里，私聊 → 回复给发送者
         feishuReplyRef.current = chatType === 'group' && chatId
           ? { type: 'chat', chatId }
           : { type: 'reply', eventData: data };
+
+        // 将飞书消息送入完整AI处理流程（和CC聊天互通、记忆互通）
         processUserMessageRef.current?.(enhancedText, { source: 'feishu', feishuData: data, msgCtx });
 
-        // 实时任务检测（仅文本消息）
-        if (msgCtx.text && msgCtx.text.length > 15) {
+        // 实时任务检测（长消息）
+        if (text.length > 10) {
           (async () => {
             try {
-              const detectedTask = await detectTaskFromMessage(msgCtx.text, {
+              const detectedTask = await detectTaskFromMessage(text, {
                 senderName: extractSenderOpenId(data) || '飞书用户',
                 chatName: '',
               });
@@ -561,8 +563,6 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
-      } else if (type === 'status') {
-        setStreamingText(data);
       }
     };
 
@@ -637,7 +637,7 @@ export default function ChatInterface() {
 
         try {
           const retryRes = await withRetry(
-            () => sendMessage(text, stateRef.current, onProgress, controller.signal, images),
+            () => sendMessage(text, stateRef.current, onProgress, controller.signal),
             { maxRetries: 2, delay: 2000, signal: controller.signal }
           );
 
@@ -689,28 +689,6 @@ export default function ChatInterface() {
 
   processUserMessageRef.current = processUserMessage;
 
-  /**
-   * 将 base64 截图保存到临时目录，返回文件路径（供飞书发送工具使用）
-   */
-  const saveBase64ImageToTemp = useCallback(async (base64DataUri) => {
-    try {
-      const match = base64DataUri.match(/^data:(image\/\w+);base64,(.+)$/);
-      if (!match) return null;
-      const rawBase64 = match[2];
-      const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
-      const ext = extMap[match[1]] || '.png';
-      const appPath = await window.electronAPI?.getAppPath?.();
-      const tmpDir = appPath ? `${appPath.replace(/\\/g, '/')}/temp/screenshots` : null;
-      if (!tmpDir) return null;
-      const fileName = `screenshot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
-      const filePath = `${tmpDir}/${fileName}`;
-      const result = await window.electronAPI?.saveBase64ToFile?.(rawBase64, filePath);
-      return result?.success ? result.path : null;
-    } catch {
-      return null;
-    }
-  }, []);
-
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text) return;
@@ -719,39 +697,14 @@ export default function ChatInterface() {
     const files = pendingFiles;
     setPendingImages([]);
     setPendingFiles([]);
-
-    // 文件加入知识库
     if (files.length > 0) {
       for (const f of files) {
         try { await addDocumentFromFile(f.path); } catch {}
       }
+      dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `已添加 ${files.length} 个文档到知识库。`, type: 'system' } });
     }
-
-    // 截图保存到临时目录 → LLM 可拿到路径调用 feishu_send_image
-    const imageTempPaths = [];
-    if (imgs.length > 0) {
-      for (const img of imgs) {
-        const savedPath = await saveBase64ImageToTemp(img);
-        if (savedPath) imageTempPaths.push(savedPath);
-      }
-    }
-
-    // 构造上下文文本，**包含完整文件路径**供飞书发送工具使用
-    const contextParts = [];
-    if (files.length > 0) {
-      const fileList = files.map(f => `${f.name}（路径: ${f.path.replace(/\\/g, '/')}）`).join('、');
-      contextParts.push(`用户上传了以下文件到知识库：${fileList}`);
-    }
-    if (imageTempPaths.length > 0) {
-      const imgLines = imageTempPaths.map((p, i) => `截图${i + 1}: ${p}`).join('\n');
-      contextParts.push(`截图已保存到以下路径，可发送到飞书：\n${imgLines}`);
-    }
-
-    const contextText = contextParts.length > 0 ? `\n\n[${contextParts.join('；')}]` : '';
-    const augmentedText = `${text}${contextText}`;
-
-    processUserMessage(augmentedText, { images: imgs.length > 0 ? imgs : undefined });
-  }, [input, pendingImages, pendingFiles, processUserMessage, saveBase64ImageToTemp]);
+    processUserMessage(text, { images: imgs.length > 0 ? imgs : undefined });
+  }, [input, pendingImages, pendingFiles, processUserMessage]);
 
   // 从计划面板点击"执行"后的自动发送
   const handlePlanExecute = useCallback((execMsg) => {
@@ -780,8 +733,6 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
-      } else if (type === 'status') {
-        setStreamingText(data);
       }
     };
 
@@ -953,7 +904,6 @@ export default function ChatInterface() {
     }
     if (!userMsg) return;
     if (s.isProcessing) return;
-    const userImages = userMsg?.images || [];
 
     // Remove this assistant message from state and regenerate
     dispatch({ type: 'REMOVE_MESSAGE', payload: msg.id });
@@ -985,8 +935,6 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
-      } else if (type === 'status') {
-        setStreamingText(data);
       }
     };
 
@@ -997,7 +945,7 @@ export default function ChatInterface() {
     };
 
     try {
-      const response = await sendMessage(text, s, onProgress, controller.signal, userImages);
+      const response = await sendMessage(text, s, onProgress, controller.signal, images);
       setStreamingText('');
       if (controller.signal.aborted) return;
       const rawThinking = thinkingTextRef.current;

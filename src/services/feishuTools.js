@@ -314,13 +314,16 @@ export async function feishuBaseOperation(input) {
       // 自动标准化：每项接受 {fields:{...}} 或 直接的 {...}
       const normalized = records.map(r => ({ fields: r.fields || r }));
       const result = await batchAddBaseRecords(app_token, table_id, normalized);
+      const batchInfo = result.batches > 1 ? `（分${result.batches}批写入）` : '';
       if (result.inserted === 0) {
-        return `批量添加失败：请求了 ${result.requested} 条，实际写入 0 条。可能原因：字段名不匹配、字段类型错误。请先用 list_fields 确认表中字段名。`;
+        const errDetail = result.errors?.length ? ` 错误: ${result.errors.join('; ')}` : '';
+        return `批量添加失败：请求了 ${result.requested} 条，实际写入 0 条。可能原因：字段名不匹配、字段类型错误。${errDetail}`;
       }
       if (result.inserted < result.requested) {
-        return `部分写入成功：请求 ${result.requested} 条，实际写入 ${result.inserted} 条（${result.requested - result.inserted} 条失败）。`;
+        const errDetail = result.errors?.length ? ` 批次错误: ${result.errors.join('; ')}` : '';
+        return `部分写入成功${batchInfo}：请求 ${result.requested} 条，实际写入 ${result.inserted} 条（${result.requested - result.inserted} 条失败）。${errDetail}`;
       }
-      return `成功写入全部 ${result.inserted} 条记录（请求 ${result.requested} 条）。`;
+      return `成功写入全部 ${result.inserted} 条记录${batchInfo}。`;
     } catch (e) {
       return `批量添加失败: ${e.message}`;
     }

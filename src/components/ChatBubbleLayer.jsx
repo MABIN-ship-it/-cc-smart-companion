@@ -29,11 +29,16 @@ function renderMarkdown(text) {
 }
 
 /* ---------- CollapsedThinking 组件 ---------- */
-function CollapsedThinking({ text }) {
-  const [expanded, setExpanded] = useState(false);
+function CollapsedThinking({ text, expanded: controlledExpanded, onToggle }) {
+  const [selfExpanded, setSelfExpanded] = useState(true);
+  const expanded = controlledExpanded !== undefined ? controlledExpanded : selfExpanded;
+  const handleToggle = () => {
+    if (onToggle) onToggle(!expanded);
+    else setSelfExpanded(!expanded);
+  };
   return (
     <div className="thinking-collapsed">
-      <div className="thinking-toggle" onClick={() => setExpanded(!expanded)}>
+      <div className="thinking-toggle" onClick={handleToggle}>
         <span className="thinking-toggle-arrow">{expanded ? '▼' : '▶'}</span>
         <span>思考过程</span>
       </div>
@@ -161,6 +166,26 @@ export default function ChatBubbleLayer({
   const containerRef = useRef(null);
   const userScrollRef = useRef(false);
   const prevMsgCountRef = useRef(0);
+  const [thinkCollapsed, setThinkCollapsed] = useState(false);
+  const prevThinking = useRef(false);
+  const hasAutoCollapsed = useRef(false);
+
+  // thinking 开始时自动展开
+  useEffect(() => {
+    if (thinking && !prevThinking.current) {
+      setThinkCollapsed(false);
+      hasAutoCollapsed.current = false;
+    }
+    prevThinking.current = thinking;
+  }, [thinking]);
+
+  // 正文首次到来时自动折叠（只触发一次）
+  useEffect(() => {
+    if (streamingText && thinking && !hasAutoCollapsed.current) {
+      setThinkCollapsed(true);
+      hasAutoCollapsed.current = true;
+    }
+  }, [streamingText, thinking]);
 
   const visibleMsgs = messages.filter(m =>
     (m.role === 'assistant' || m.role === 'user') && m.content
@@ -244,8 +269,16 @@ export default function ChatBubbleLayer({
         {(thinking || streamingText) && (
           <div className="chat-bubble streaming">
             <div className="chat-bubble-body">
-              {thinking && (
-                <CollapsedThinking text={thinkingText || '思考中...'} />
+              {thinking && !thinkCollapsed && (
+                <CollapsedThinking text={thinkingText || '思考中...'} expanded={true} onToggle={(v) => setThinkCollapsed(!v)} />
+              )}
+              {thinking && thinkCollapsed && (
+                <div className="thinking-collapsed">
+                  <div className="thinking-toggle" onClick={() => setThinkCollapsed(false)}>
+                    <span className="thinking-toggle-arrow">▶</span>
+                    <span>思考过程</span>
+                  </div>
+                </div>
               )}
               {streamingText && (
                 <>

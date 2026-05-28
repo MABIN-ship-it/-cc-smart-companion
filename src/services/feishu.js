@@ -128,24 +128,45 @@ export function getFeishuWebUrl(type, id) {
   return `https://${cachedTenantDomain || 'bytedance'}.feishu.cn/${type}/${id}`;
 }
 
+// ─── Token 缓存清理 ──────────────────────────────────
+
+function clearCachedToken() {
+  try { localStorage.removeItem(FEISHU_TOKEN_KEY); } catch {}
+}
+
 // ─── 通用 API 请求 ─────────────────────────────────────
 
+const TOKEN_EXPIRED_CODES = [99991663, 99991664, 99991665, 99991667];
+
 export async function feishuApi(method, path, body = null) {
-  const token = await getTenantAccessToken();
   const url = `${FEISHU_BASE_URL}${path}`;
 
-  const options = {
-    method,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json; charset=utf-8',
-    },
+  const doRequest = async (token) => {
+    const options = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+    };
+    if (body && method !== 'GET') options.body = JSON.stringify(body);
+    const response = await fetch(url, options);
+    return response.json();
   };
 
-  if (body && method !== 'GET') options.body = JSON.stringify(body);
+  let token = await getTenantAccessToken();
+  const data = await doRequest(token);
 
-  const response = await fetch(url, options);
-  const data = await response.json();
+  // token 过期 → 清缓存重新获取 → 重试一次
+  if (TOKEN_EXPIRED_CODES.includes(data.code)) {
+    clearCachedToken();
+    token = await getTenantAccessToken();
+    const retryData = await doRequest(token);
+    if (retryData.code !== 0) {
+      throw new Error(`飞书API错误(${retryData.code}): ${retryData.msg}`);
+    }
+    return retryData;
+  }
 
   if (data.code !== 0) {
     throw new Error(`飞书API错误(${data.code}): ${data.msg}`);
@@ -372,14 +393,29 @@ export async function updateBaseRecord(appToken, tableId, recordId, fields) {
 }
 
 export async function batchAddBaseRecords(appToken, tableId, records) {
-  const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`, {
-    records,
-  });
-  const inserted = result.data?.records || [];
+  const BATCH_SIZE = 500; // 飞书限制 500 条/次
+  const allInserted = [];
+  let errors = [];
+
+  for (let i = 0; i < records.length; i += BATCH_SIZE) {
+    const chunk = records.slice(i, i + BATCH_SIZE);
+    try {
+      const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`, {
+        records: chunk,
+      });
+      const inserted = result.data?.records || [];
+      allInserted.push(...inserted);
+    } catch (e) {
+      errors.push(`第${Math.floor(i / BATCH_SIZE) + 1}批(${chunk.length}条): ${e.message}`);
+    }
+  }
+
   return {
     requested: records.length,
-    inserted: inserted.length,
-    records: inserted,
+    inserted: allInserted.length,
+    batches: Math.ceil(records.length / BATCH_SIZE),
+    records: allInserted,
+    errors: errors.length > 0 ? errors : undefined,
   };
 }
 
