@@ -1352,3 +1352,81 @@ ipcMain.handle('feishu:saveConfigFile', async (_event, appId, appSecret) => {
     return { success: false, error: e.message };
   }
 });
+
+// ====== 飞书资源下载（从消息中下载文件/图片）======
+
+ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, type) => {
+  try {
+    const token = await feishuGetToken();
+    const resourceType = type === 'image' ? 'image' : 'file';
+    const apiPath = `/open-apis/im/v1/messages/${messageId}/resources/${fileKey}?type=${resourceType}`;
+
+    const responseData = await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'open.feishu.cn',
+        path: apiPath,
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        timeout: 30000,
+      }, (res) => {
+        // 检查 HTTP 状态码判断是否是二进制响应还是 JSON 错误
+        const contentType = res.headers['content-type'] || '';
+        if (contentType.includes('application/json')) {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              reject(new Error(json.msg || `下载失败: ${json.code}`));
+            } catch { reject(new Error('解析错误响应失败')); }
+          });
+          return;
+        }
+        // 二进制响应
+        const chunks = [];
+        const disposition = res.headers['content-disposition'] || '';
+        const nameMatch = disposition.match(/filename\*?=(?:UTF-8'')?(.+?)(?:;|$)/i)
+          || disposition.match(/filename="?(.+?)"?$/i);
+        const rawName = nameMatch ? decodeURIComponent(nameMatch[1]) : `${fileKey}.bin`;
+        resolve({ chunks, contentType, fileName: rawName });
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => resolve({ chunks, contentType, fileName: rawName }));
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('下载超时(30s)')); });
+      req.end();
+    });
+
+    const buffer = Buffer.concat(responseData.chunks);
+    const downloadDir = path.join(app.getPath('temp'), 'cc_feishu_downloads');
+    if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
+    const filePath = path.join(downloadDir, responseData.fileName);
+    fs.writeFileSync(filePath, buffer);
+
+    const result = {
+      success: true,
+      filePath,
+      fileName: responseData.fileName,
+      fileSize: buffer.length,
+      mimeType: responseData.contentType,
+    };
+
+    // 图片额外返回 base64
+    if (resourceType === 'image' || responseData.contentType.startsWith('image/')) {
+      result.base64Preview = `data:${responseData.contentType};base64,${buffer.toString('base64')}`;
+    }
+
+    // 文本类文件返回内容预览
+    const textExtensions = ['.txt', '.md', '.json', '.csv', '.xml', '.yaml', '.yml', '.js', '.ts', '.py', '.html', '.css', '.log'];
+    const ext = path.extname(responseData.fileName).toLowerCase();
+    if (textExtensions.includes(ext) || responseData.contentType.startsWith('text/')) {
+      result.textContent = buffer.toString('utf-8').slice(0, 8000);
+    }
+
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});

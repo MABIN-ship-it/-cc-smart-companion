@@ -10,7 +10,7 @@ import { startProactiveEngine } from '../services/proactive';
 import { startScheduledScan, stopScheduledScan, detectTaskFromMessage } from '../services/feishuMonitor';
 import { handleIncomingMessage, getBotConfig } from '../services/feishuBotService';
 import FeishuTaskPanel from './FeishuTaskPanel';
-import { dispatchFeishuMessage, extractTextFromEvent, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
+import { dispatchFeishuMessage, extractTextFromEvent, extractMessageContext, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
 import { createExpressionEngine } from '../services/expressionEngine';
 import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
@@ -339,18 +339,30 @@ export default function ChatInterface() {
         // Bot 自动回复（私聊+群聊@CC）
         handleIncomingMessage(data).catch(() => {});
 
-        const text = extractTextFromEvent(data);
-        if (!text) return;
+        const msgCtx = extractMessageContext(data);
+        if (!msgCtx) return;
+
+        const msgText = msgCtx.text || msgCtx.description || '';
+        let enhancedText = `[来自飞书] ${msgText}`;
+        if (msgCtx.docUrls?.length) {
+          enhancedText += `\n[消息含${msgCtx.docUrls.length}个飞书文档链接，可使用feishu_read_document读取: ${msgCtx.docUrls.map(d => d.url).join(', ')}]`;
+        }
+        if (msgCtx.fileKey) {
+          enhancedText += `\n[消息含文件: ${msgCtx.fileName || '未知文件'}, message_id: ${msgCtx.messageId}, file_key: ${msgCtx.fileKey}，可用feishu_download_resource下载查看]`;
+        }
+        if (msgCtx.imageKey && !msgCtx.fileKey) {
+          enhancedText += `\n[消息含图片, message_id: ${msgCtx.messageId}, image_key: ${msgCtx.imageKey}，可用feishu_download_resource下载查看]`;
+        }
 
         // 将飞书消息送入完整AI处理流程（和CC聊天互通、记忆互通）
         feishuReplyRef.current = { type: 'reply', eventData: data };
-        processUserMessageRef.current?.(`[来自飞书] ${text}`, { source: 'feishu', feishuData: data });
+        processUserMessageRef.current?.(enhancedText, { source: 'feishu', feishuData: data, msgCtx });
 
-        // 实时任务检测（LLM驱动）
-        if (text.length > 15) {
+        // 实时任务检测（仅文本消息）
+        if (msgCtx.text && msgCtx.text.length > 15) {
           (async () => {
             try {
-              const detectedTask = await detectTaskFromMessage(text, {
+              const detectedTask = await detectTaskFromMessage(msgCtx.text, {
                 senderName: extractSenderOpenId(data) || '飞书用户',
                 chatName: '',
               });

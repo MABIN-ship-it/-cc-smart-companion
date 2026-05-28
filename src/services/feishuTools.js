@@ -10,6 +10,7 @@ import {
   addBaseRecord, updateBaseRecord, batchAddBaseRecords,
   addTable, listTableFields, addTableFields,
   getMyOpenId, setMyOpenId, checkPermissions, sendCreationNotification,
+  readDocumentContent, extractFeishuDocUrls,
 } from './feishu';
 import { getWorkspaceContext } from './toolRegistry';
 
@@ -517,6 +518,53 @@ export async function feishuSendFile(input) {
   }
 }
 
+// ─── 工具：读取飞书云文档 ──────────────────────────
+
+export async function feishuReadDocument(input) {
+  const { url, document_id } = input || {};
+  let docId = document_id;
+  if (!docId && url) {
+    const extracted = extractFeishuDocUrls(url);
+    if (extracted.length) docId = extracted[0].docId;
+  }
+  if (!docId) return '请提供飞书文档链接(url)或文档ID(document_id)。';
+
+  try {
+    const text = await readDocumentContent(docId);
+    if (!text) return `文档 ${docId} 内容为空或读取失败，请确认文档存在且 CC 有权限访问。`;
+    return `文档内容（${docId}）：\n\n${text.slice(0, 8000)}`;
+  } catch (e) {
+    return `读取文档失败: ${e.message}`;
+  }
+}
+
+// ─── 工具：下载飞书消息中的文件/图片 ──────────────
+
+export async function feishuDownloadResource(input) {
+  const { message_id, file_key, type } = input || {};
+  if (!message_id || !file_key) return '请提供 message_id 和 file_key（从飞书消息上下文中获取）。';
+  const resourceType = type === 'image' ? 'image' : 'file';
+
+  try {
+    if (!window.electronAPI?.feishuDownloadResource) {
+      return '文件下载功能不可用，请重启应用。';
+    }
+    const result = await window.electronAPI.feishuDownloadResource(message_id, file_key, resourceType);
+    if (!result?.success) return `下载失败: ${result?.error || '未知错误'}`;
+
+    let response = `文件已下载到: ${result.filePath}（${result.fileName}, ${(result.fileSize / 1024).toFixed(1)}KB）`;
+    if (result.base64Preview) {
+      response += `\n[图片已就绪，可发送到飞书: ${result.filePath}]`;
+    }
+    if (result.textContent) {
+      response += `\n\n文件内容预览：\n${result.textContent.slice(0, 4000)}`;
+    }
+    return response;
+  } catch (e) {
+    return `下载文件异常: ${e.message || e}`;
+  }
+}
+
 // ─── 工具定义 ─────────────────────────────────────
 
 export const FEISHU_TOOLS = [
@@ -654,6 +702,30 @@ export const FEISHU_TOOLS = [
       required: ['file_path'],
     },
   },
+  {
+    name: 'feishu_read_document',
+    description: '读取飞书云文档的完整内容。用户发来飞书文档链接或要求查看文档时调用。支持云文档(docx)、思维导图(mindnote)。传入文档URL自动解析，也可直接传document_id。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: '飞书文档链接，如 https://xxx.feishu.cn/docx/ABCD' },
+        document_id: { type: 'string', description: '文档ID，如已知可直接传入' },
+      },
+    },
+  },
+  {
+    name: 'feishu_download_resource',
+    description: '从飞书消息中下载文件或图片。当用户通过飞书发送文件/图片给CC，CC需要查看内容时调用。需要提供消息的message_id和file_key（可从飞书消息上下文中获取）。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        message_id: { type: 'string', description: '飞书消息ID' },
+        file_key: { type: 'string', description: '文件/图片的file_key' },
+        type: { type: 'string', description: '类型：file 或 image' },
+      },
+      required: ['message_id', 'file_key'],
+    },
+  },
 ];
 
 export const FEISHU_EXECUTORS = {
@@ -668,4 +740,6 @@ export const FEISHU_EXECUTORS = {
   feishu_select_identity: feishuSelectIdentity,
   feishu_send_image: feishuSendImage,
   feishu_send_file: feishuSendFile,
+  feishu_read_document: feishuReadDocument,
+  feishu_download_resource: feishuDownloadResource,
 };

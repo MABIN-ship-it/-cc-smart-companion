@@ -252,6 +252,41 @@ export async function getDocumentContent(documentId) {
   return result.data;
 }
 
+/** 递归读取文档块并提取纯文本，供 AI 阅读 */
+export async function readDocumentContent(documentId) {
+  async function fetchBlocks(blockId) {
+    const result = await feishuApi('GET', `/docx/v1/documents/${documentId}/blocks/${blockId}/children`);
+    return result.data?.items || [];
+  }
+
+  function extractBlockText(block) {
+    const bt = block.block_type;
+    const textEls = block.text?.elements || [];
+    const text = textEls.map(e => e.text_run?.content || '').join('');
+    // 标题加标记
+    if (bt >= 3 && bt <= 11) return `\n## ${text}`;
+    if (bt === 12) return `- ${text}`;
+    if (bt === 13) return `1. ${text}`;
+    if (bt === 14) return `\`\`\`\n${text}\n\`\`\``;
+    if (bt === 17) return `[ ] ${text}`;
+    return text;
+  }
+
+  async function readRecursive(parentBlockId) {
+    const blocks = await fetchBlocks(parentBlockId);
+    let output = '';
+    for (const block of blocks) {
+      output += extractBlockText(block) + '\n';
+      if (block.children?.length > 0) {
+        output += await readRecursive(block.block_id);
+      }
+    }
+    return output;
+  }
+
+  return (await readRecursive(documentId)).trim();
+}
+
 export async function appendDocumentBlocks(documentId, blocks) {
   const result = await feishuApi('POST', `/docx/v1/documents/${documentId}/blocks/${documentId}/children`, {
     children: blocks,
@@ -373,8 +408,6 @@ export function dispatchFeishuMessage(data) {
  */
 export function extractTextFromEvent(eventData) {
   try {
-    // 路径1: 完整schema { event: { message: { content } } }
-    // 路径2: 去包装后 { message: { content } }
     const msg = eventData?.event?.message || eventData?.message;
     const content = msg?.content;
     if (!content) return '';
@@ -386,6 +419,101 @@ export function extractTextFromEvent(eventData) {
     return '';
   } catch {
     return '';
+  }
+}
+
+/** 从文本中提取飞书文档链接（云文档/思维导图/多维表格） */
+export function extractFeishuDocUrls(text) {
+  if (!text) return [];
+  const patterns = [
+    { regex: /https:\/\/[a-zA-Z0-9.-]+\.feishu\.cn\/docx\/([A-Za-z0-9_-]+)/g, type: 'docx' },
+    { regex: /https:\/\/[a-zA-Z0-9.-]+\.feishu\.cn\/mindnotes\/([A-Za-z0-9_-]+)/g, type: 'mindnote' },
+    { regex: /https:\/\/[a-zA-Z0-9.-]+\.feishu\.cn\/base\/([A-Za-z0-9_-]+)/g, type: 'bitable' },
+  ];
+  const results = [];
+  for (const { regex, type } of patterns) {
+    for (const match of text.matchAll(regex)) {
+      results.push({ url: match[0], docId: match[1], type });
+    }
+  }
+  return results;
+}
+
+/**
+ * 从 WebSocket 事件提取消息上下文，处理所有消息类型（不再丢弃非文本消息）。
+ * 返回 { text, docUrls, imageKey, fileKey, fileName, messageId, messageType, description }
+ */
+export function extractMessageContext(eventData) {
+  try {
+    const msg = eventData?.event?.message || eventData?.message;
+    if (!msg) return null;
+    const msgType = msg.message_type || msg.msg_type || 'unknown';
+    const messageId = msg.message_id || '';
+    const contentStr = msg.content || '{}';
+
+    let parsed;
+    try { parsed = JSON.parse(contentStr); } catch { parsed = {}; }
+
+    const ctx = { messageId, messageType: msgType };
+
+    switch (msgType) {
+      case 'text': {
+        const text = parsed.text || '';
+        ctx.text = text;
+        ctx.docUrls = extractFeishuDocUrls(text);
+        ctx.description = text;
+        break;
+      }
+      case 'post': {
+        const elements = [];
+        const flatten = (node) => {
+          if (Array.isArray(node)) node.forEach(flatten);
+          else if (node?.elements) node.elements.forEach(flatten);
+          else if (node?.text_run?.content) elements.push(node.text_run.content);
+          else if (node?.content && Array.isArray(node.content)) node.content.forEach(flatten);
+        };
+        flatten(parsed.content || parsed);
+        const text = elements.join('');
+        ctx.text = text;
+        ctx.docUrls = extractFeishuDocUrls(text);
+        ctx.description = text;
+        break;
+      }
+      case 'image':
+        ctx.imageKey = parsed.image_key || '';
+        ctx.description = `[图片消息]`;
+        break;
+      case 'file':
+        ctx.fileKey = parsed.file_key || '';
+        ctx.fileName = parsed.file_name || '未知文件';
+        ctx.description = `[文件消息: ${ctx.fileName}]`;
+        break;
+      case 'media':
+        ctx.imageKey = parsed.image_key || '';
+        ctx.fileKey = parsed.file_key || '';
+        ctx.fileName = parsed.file_name || parsed.image_key || '媒体消息';
+        ctx.description = `[媒体消息: ${ctx.fileName}]`;
+        break;
+      case 'audio':
+        ctx.fileKey = parsed.file_key || '';
+        ctx.description = `[语音消息]`;
+        break;
+      case 'sticker':
+        ctx.description = `[表情]`;
+        break;
+      case 'share_chat':
+        ctx.description = `[分享了群聊]`;
+        break;
+      case 'share_user':
+        ctx.description = `[分享了联系人]`;
+        break;
+      default:
+        ctx.description = `[消息类型: ${msgType}]`;
+    }
+
+    return ctx;
+  } catch {
+    return null;
   }
 }
 
