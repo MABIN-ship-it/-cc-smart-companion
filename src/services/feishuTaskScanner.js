@@ -29,12 +29,13 @@ async function getPermissionMap() {
   try {
     const perms = await checkPermissions();
     _permissionCache = {};
-    for (const p of perms) {
+    for (const p of perms.results) {
       _permissionCache[p.domain] = p.ok;
     }
     _permissionCacheTime = Date.now();
   } catch {
     _permissionCache = {};
+    _permissionCacheTime = Date.now();
   }
   return _permissionCache;
 }
