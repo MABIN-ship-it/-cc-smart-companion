@@ -226,7 +226,7 @@ export async function createMindNote(title, nodes = []) {
   const mindNoteId = result.data?.mind_note?.mind_note_id;
   return {
     ...result.data,
-    url: mindNoteId ? `https://bytedance.feishu.cn/mindnotes/${mindNoteId}` : undefined,
+    url: result.data?.mind_note?.url || (mindNoteId ? `https://bytedance.feishu.cn/mindnotes/${mindNoteId}` : undefined),
   };
 }
 
