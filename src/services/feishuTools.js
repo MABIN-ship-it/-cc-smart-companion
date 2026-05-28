@@ -303,7 +303,13 @@ export async function feishuBaseOperation(input) {
     if (!records?.length) return '请提供 records 数组，每项为 { fields: {...} }';
     try {
       const result = await batchAddBaseRecords(app_token, table_id, records);
-      return `已批量添加 ${records.length} 条记录`;
+      if (result.inserted === 0) {
+        return `批量添加失败：请求了 ${result.requested} 条，但实际写入 0 条。可能原因：字段名不匹配、字段类型错误。请先用 list_fields 确认表中字段名。`;
+      }
+      if (result.inserted < result.requested) {
+        return `部分写入成功：请求 ${result.requested} 条，实际写入 ${result.inserted} 条（${result.requested - result.inserted} 条失败）。`;
+      }
+      return `成功写入全部 ${result.inserted} 条记录（请求 ${result.requested} 条）。`;
     } catch (e) {
       return `批量添加失败: ${e.message}`;
     }

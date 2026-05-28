@@ -369,7 +369,12 @@ export async function batchAddBaseRecords(appToken, tableId, records) {
   const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`, {
     records,
   });
-  return result.data;
+  const inserted = result.data?.records || [];
+  return {
+    requested: records.length,
+    inserted: inserted.length,
+    records: inserted,
+  };
 }
 
 // ─── 多维表格字段管理 ────────────────────────────

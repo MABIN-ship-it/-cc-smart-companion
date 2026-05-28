@@ -1386,17 +1386,21 @@ ipcMain.handle('feishu:saveConfigFile', async (_event, appId, appSecret) => {
 function extractExcelSheets(workbook) {
   const sheets = workbook.worksheets.map(ws => {
     const rows = [];
-    ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
-      if (rowNum > 100) return;
+    let totalRows = 0;
+    ws.eachRow({ includeEmpty: false }, (row) => {
+      totalRows++;
       const cells = [];
       row.eachCell({ includeEmpty: false }, (cell) => {
         cells.push(cell.text || String(cell.value ?? ''));
       });
       if (cells.length) rows.push(cells.join('\t'));
     });
-    return `[${ws.name}]\n${rows.join('\n')}`;
+    const header = rows.length > 0 ? rows[0] : '';
+    const dataRows = rows.length > 1 ? rows.length - 1 : 0;
+    return `[工作表: ${ws.name} | 总行数: ${totalRows} | 表头: ${header} | 数据行: ${dataRows}]\n${rows.join('\n')}`;
   });
-  return sheets.join('\n\n').slice(0, 8000);
+  // 最大 200000 字符，足够容纳数千行数据
+  return sheets.join('\n\n').slice(0, 200000);
 }
 
 // ====== 飞书资源下载（从消息中下载文件/图片）======
