@@ -119,7 +119,7 @@ export async function feishuApprovalHandle(input) {
   if (action === 'list' || action === 'pending') {
     try {
       const result = await getApprovalPendingList({ pageSize: 20 });
-      const items = result?.items || result?.data?.items || [];
+      const items = result?.tasks || result?.data?.tasks || [];
       if (items.length === 0) return '当前没有待处理的审批。';
       return `待处理审批（共${items.length}条）：\n${items.map((a, i) =>
         `${i + 1}. [${a.id || a.instance_id}] ${a.title || a.instance_name || '未知'} — 来自: ${a.originator_name || a.originator_id || '未知'}`

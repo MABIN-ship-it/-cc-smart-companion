@@ -83,11 +83,9 @@ export async function getTaskDetail(taskId) {
 
 // ─── 审批 (approval/v4) ─────────────────────────────
 
-export async function getApprovalList({ pageSize = 50, pageToken, status } = {}) {
-  // status: PENDING/APPROVED/REJECTED/CANCELED
+export async function getApprovalList({ pageSize = 50, pageToken } = {}) {
   let path = `/approval/v4/instances?page_size=${pageSize}`;
   if (pageToken) path += `&page_token=${pageToken}`;
-  if (status) path += `&status=${status}`;
   const result = await feishuApi('GET', path);
   return result.data || { items: [] };
 }
@@ -119,11 +117,11 @@ export async function getInstanceDetail(instanceId) {
  * 获取用户待审批的实例列表（审批中心）
  */
 export async function getApprovalPendingList({ pageSize = 20, pageToken, userId } = {}) {
-  const body = { limit: pageSize };
+  const body = { page_size: pageSize };
   if (pageToken) body.page_token = pageToken;
   if (userId) body.user_id = userId;
   const result = await feishuApi('POST', '/approval/v4/tasks/query', body);
-  return result.data || { items: [] };
+  return result.data || { tasks: [] };
 }
 
 // ─── 知识库 (wiki/v2) ─────────────────────────────

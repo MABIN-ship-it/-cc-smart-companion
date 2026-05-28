@@ -16,7 +16,7 @@ import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
 import { getRelationship, recordConversation, getLevelInfo } from '../services/relationshipTracker';
 import { initNetworkMonitor, categorizeError, isRetryable, withRetry } from '../services/errorHandler';
-import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey, getSuppliers, getSupplierDefaultModel, getCustomProviders, saveCustomProvider, deleteCustomProvider, getExtraHeader, setExtraHeader, getUserModelName, setUserModelName } from '../services/modelAdapter';
+import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey, getSuppliers, getSupplierDefaultModel, getCustomProviders, saveCustomProvider, deleteCustomProvider, getExtraHeader, setExtraHeader, getUserModelName, setUserModelName, sendModelRequest } from '../services/modelAdapter';
 import { setWorkspaceContext } from '../services/toolRegistry';
 import { analyzeProject } from '../services/projectContext';
 import { addDocumentFromFile } from '../services/knowledgeBase';
@@ -132,7 +132,7 @@ export default function ChatInterface() {
     }
 
     // Initialize KnowledgeSystem (await migration)
-    const ks = getKnowledgeSystem();
+    const ks = getKnowledgeSystem({ sendModelRequest });
     if (ks) {
       (async () => {
         try {

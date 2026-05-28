@@ -4,7 +4,7 @@
  * 从飞书所有数据源（IM消息、多维表格、任务API、审批、日历、邮件）中
  * 自动发现用户被分配的任务，使用AI语义理解替代正则匹配。
  */
-import { isFeishuConfigured, getChatList, getMessageList } from './feishu';
+import { isFeishuConfigured, getChatList, getMessageList, checkPermissions } from './feishu';
 import { sendModelRequest, getCurrentModel, getApiKey } from './modelAdapter';
 import {
   getTaskList,
@@ -16,6 +16,28 @@ import {
 
 const TASK_BOOK_KEY = 'cc_feishu_task_book';
 const MAX_TASKS = 50;
+
+// ─── 权限缓存（避免每次扫描重复检查）─────────────────
+let _permissionCache = null;
+let _permissionCacheTime = 0;
+const PERMISSION_CACHE_TTL = 300000; // 5分钟
+
+async function getPermissionMap() {
+  if (_permissionCache && Date.now() - _permissionCacheTime < PERMISSION_CACHE_TTL) {
+    return _permissionCache;
+  }
+  try {
+    const perms = await checkPermissions();
+    _permissionCache = {};
+    for (const p of perms) {
+      _permissionCache[p.domain] = p.ok;
+    }
+    _permissionCacheTime = Date.now();
+  } catch {
+    _permissionCache = {};
+  }
+  return _permissionCache;
+}
 
 // ─── 任务簿持久化 ─────────────────────────────────
 
@@ -40,6 +62,7 @@ function saveTaskBook(tasks) {
  */
 async function collectFeishuContext() {
   const ctx = { messages: [], approvals: [], tasks: [], events: [], errors: [] };
+  const perms = await getPermissionMap();
 
   // IM 消息（前 5 个群，每个 30 条）
   try {
@@ -65,10 +88,11 @@ async function collectFeishuContext() {
   } catch (e) { ctx.errors.push(`群列表: ${e.message}`); }
 
   // 待审批
-  try {
-    const approvals = await getApprovalPendingList({ pageSize: 20 });
-    if (approvals?.items?.length) {
-      ctx.approvals = approvals.items.map(a => ({
+  if (perms.approval) {
+    try {
+      const approvals = await getApprovalPendingList({ pageSize: 20 });
+    if (approvals?.tasks?.length) {
+      ctx.approvals = approvals.tasks.map(a => ({
         id: a.instance_id || a.id,
         title: a.title || a.instance_name || '',
         status: a.status || 'pending',
@@ -76,7 +100,8 @@ async function collectFeishuContext() {
         time: a.create_time || '',
       }));
     }
-  } catch (e) { ctx.errors.push(`审批: ${e.message}`); }
+    } catch (e) { ctx.errors.push(`审批: ${e.message}`); }
+  }
 
   // 飞书任务
   try {

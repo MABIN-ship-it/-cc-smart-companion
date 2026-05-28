@@ -367,9 +367,9 @@ export async function feishuSendImage(input) {
     let uploadResult;
     if (file_path.startsWith('data:image/')) {
       // 粘贴截图 → base64 → 主进程解码上传
-      uploadResult = await window.electronAPI.feuishuUploadImageBase64?.(file_path);
+      uploadResult = await window.electronAPI.feishuUploadImageBase64?.(file_path);
     } else {
-      uploadResult = await window.electronAPI.feuishuUploadImage?.(file_path);
+      uploadResult = await window.electronAPI.feishuUploadImage?.(file_path);
     }
 
     if (!uploadResult) {
@@ -407,7 +407,7 @@ export async function feishuSendFile(input) {
       return '文件上传失败: Electron环境未就绪，请重启应用。';
     }
 
-    const uploadResult = await window.electronAPI.feuishuUploadFile?.(file_path, file_name || undefined);
+    const uploadResult = await window.electronAPI.feishuUploadFile?.(file_path, file_name || undefined);
 
     if (!uploadResult) {
       return '文件上传失败: 上传接口不可用，请检查飞书是否已连接。';
