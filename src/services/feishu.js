@@ -432,6 +432,21 @@ export async function replyToMessage(eventData, customReply) {
   }
 }
 
+/**
+ * 创建飞书资源后自动向用户发送链接通知。火后即忘，失败不影响主流程。
+ * @param {'文档'|'多维表格'|'报告'|'方案'|'思维导图'} type
+ * @param {string} title
+ * @param {string} url
+ */
+export async function sendCreationNotification(type, title, url) {
+  try {
+    if (!url) return;
+    const myId = await getMyOpenId();
+    if (!myId) return;
+    await sendMessage('open_id', myId, `CC 已为你创建了${type}：${title}\n${url}`);
+  } catch { /* 通知失败不影响主流程 */ }
+}
+
 // ─── 当前用户 ─────────────────────────────────────
 
 let _cachedMyInfo = null;

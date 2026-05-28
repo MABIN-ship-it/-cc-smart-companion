@@ -20,7 +20,7 @@ import {
   searchMinutes, getMinutesInfo, getMinutesAISummary, getMinutesAITodos,
 } from './feishuApiExtended';
 import { scanAll } from './feishuTaskScanner';
-import { isFeishuConfigured } from './feishu';
+import { isFeishuConfigured, sendCreationNotification } from './feishu';
 import { sendModelRequest, getCurrentModel, getApiKey } from './modelAdapter';
 
 // ─── 辅助：检查飞书连接 ───────────────────────────
@@ -49,6 +49,7 @@ export async function feishuCreateReport(input) {
 
   try {
     const result = await executeCreateReport(task);
+    sendCreationNotification('报告', result.title, result.url).catch(() => {});
     return `报告已生成！
 标题：${result.title}
 飞书文档链接：${result.url || '创建失败'}
@@ -74,6 +75,7 @@ export async function feishuCreateProposal(input) {
 
   try {
     const result = await executeCreateDoc(task);
+    sendCreationNotification('方案', result.title, result.url).catch(() => {});
     return `方案已生成！
 标题：${result.title}
 飞书文档链接：${result.url || '创建失败'}
@@ -98,6 +100,7 @@ export async function feishuCreateMindmap(input) {
 
   try {
     const result = await executeCreateMindMap(task);
+    sendCreationNotification('思维导图', result.title, result.url).catch(() => {});
     return `思维导图已创建！
 标题：${result.title}
 节点数：${result.nodes?.length || 0}

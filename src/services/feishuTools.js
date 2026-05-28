@@ -9,7 +9,7 @@ import {
   createDocument, createBase, getMessageList, listBaseTables, searchBaseRecords,
   addBaseRecord, updateBaseRecord, batchAddBaseRecords,
   addTable, listTableFields, addTableFields,
-  getMyOpenId, setMyOpenId, checkPermissions,
+  getMyOpenId, setMyOpenId, checkPermissions, sendCreationNotification,
 } from './feishu';
 import { getWorkspaceContext } from './toolRegistry';
 
@@ -180,6 +180,7 @@ export async function feishuCreateDoc(input) {
 
   try {
     const result = await createDocument(title, content || '');
+    sendCreationNotification('文档', result.title, result.url).catch(() => {});
     return `飞书文档已创建：${result.title}\n链接：${result.url}\n文档ID：${result.documentId}`;
   } catch (e) {
     return `创建文档失败: ${e.message}`;
@@ -211,7 +212,9 @@ export async function feishuBaseOperation(input) {
     if (!name) return '请提供多维表格名称。例如：{ "operation": "create_base", "name": "项目进度表" }';
     try {
       const result = await createBase(name, folder_token);
-      return `多维表格已创建：${name}\napp_token: ${result.app?.app_token || 'unknown'}\n链接: ${result.app?.url || '无'}`;
+      const url = result.app?.url;
+      if (url) sendCreationNotification('多维表格', name, url).catch(() => {});
+      return `多维表格已创建：${name}\napp_token: ${result.app?.app_token || 'unknown'}\n链接: ${url || '无'}`;
     } catch (e) {
       return `创建多维表格失败: ${e.message}`;
     }

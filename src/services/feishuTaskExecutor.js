@@ -169,6 +169,7 @@ export async function executeCreateMindMap(task, { signal, onProgress } = {}) {
     title: mindData.title || task.title,
     nodes,
     mindNoteId: result?.mind_note?.mind_note_id,
+    url: result?.url,
   };
 }
 

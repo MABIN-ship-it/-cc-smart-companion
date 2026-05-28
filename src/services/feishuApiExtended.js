@@ -223,7 +223,11 @@ export async function createMindNote(title, nodes = []) {
     content: { children: toMindNodes(nodes) },
   };
   const result = await feishuApi('POST', '/mind_notes/v1/mind_notes', body);
-  return result.data;
+  const mindNoteId = result.data?.mind_note?.mind_note_id;
+  return {
+    ...result.data,
+    url: mindNoteId ? `https://bytedance.feishu.cn/mindnotes/${mindNoteId}` : undefined,
+  };
 }
 
 export async function getMindNote(mindNoteId) {
