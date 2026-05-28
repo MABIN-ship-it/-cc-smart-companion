@@ -1135,3 +1135,180 @@ ipcMain.handle('feishu:status', () => {
 ipcMain.handle('feishu:disconnect', () => {
   return feishuWs.stop();
 });
+
+// ====== Feishu 文件上传 ======
+
+/**
+ * 获取飞书 tenant_access_token（主进程用，复用 localStorage 凭证）
+ */
+async function feishuGetToken() {
+  const userDataPath = app.getPath('userData');
+  const lsPath = path.join(userDataPath, 'Local Storage', 'leveldb');
+  // localStorage 在 Electron 中以 LevelDB 存储，不便直接读取
+  // 转为用固定的配置文件路径
+  const configPath = path.join(userDataPath, 'cc_feishu_config.json');
+  let appId, appSecret;
+
+  // 先从 JSON 文件读（如果有的话）
+  try {
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, 'utf-8');
+      const cfg = JSON.parse(raw);
+      appId = cfg.appId;
+      appSecret = cfg.appSecret;
+    }
+  } catch {}
+
+  if (!appId || !appSecret) {
+    throw new Error('飞书未配置。请先在 CC 工具箱中连接飞书。');
+  }
+
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ app_id: appId, app_secret: appSecret });
+    const req = https.request({
+      hostname: 'open.feishu.cn',
+      path: '/open-apis/auth/v3/tenant_access_token/internal',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) },
+      timeout: 10000,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.code === 0 && json.tenant_access_token) {
+            resolve(json.tenant_access_token);
+          } else {
+            reject(new Error(`获取token失败: ${json.msg || json.code}`));
+          }
+        } catch (e) {
+          reject(new Error('解析token响应失败'));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('获取token超时')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * 构造 multipart/form-data 请求体
+ */
+function buildMultipart(fields, boundary) {
+  const parts = [];
+  for (const [name, value] of Object.entries(fields)) {
+    if (Buffer.isBuffer(value)) {
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="${value.filename || 'file'}"\r\nContent-Type: ${value.contentType || 'application/octet-stream'}\r\n\r\n`));
+      parts.push(value);
+      parts.push(Buffer.from('\r\n'));
+    } else {
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+    }
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`));
+  return Buffer.concat(parts);
+}
+
+/**
+ * 上传文件到飞书
+ */
+function feishuUpload(apiPath, fields) {
+  return new Promise((resolve, reject) => {
+    feishuGetToken().then(token => {
+      const boundary = '----CCFeishu' + Date.now();
+      const body = buildMultipart(fields, boundary);
+
+      const req = https.request({
+        hostname: 'open.feishu.cn',
+        path: apiPath,
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': body.length,
+        },
+        timeout: 60000,
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.code === 0) {
+              resolve({ success: true, data: json.data });
+            } else {
+              resolve({ success: false, error: `上传失败(${json.code}): ${json.msg}` });
+            }
+          } catch {
+            resolve({ success: false, error: '解析上传响应失败' });
+          }
+        });
+      });
+      req.on('error', (e) => resolve({ success: false, error: e.message }));
+      req.on('timeout', () => { req.destroy(); resolve({ success: false, error: '上传超时(60s)' }); });
+      req.write(body);
+      req.end();
+    }).catch(e => resolve({ success: false, error: e.message }));
+  });
+}
+
+ipcMain.handle('feishu:uploadImage', async (_event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return { success: false, error: `文件不存在: ${filePath}` };
+    const fileBuffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeMap = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' };
+    const contentType = mimeMap[ext] || 'image/png';
+
+    const result = await feishuUpload('/open-apis/im/v1/images', {
+      image_type: 'message',
+      image: Object.assign(fileBuffer, { filename: `image${ext}`, contentType }),
+    });
+
+    if (result.success && result.data?.image_key) {
+      return { success: true, imageKey: result.data.image_key };
+    }
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('feishu:uploadFile', async (_event, filePath, fileName) => {
+  try {
+    if (!fs.existsSync(filePath)) return { success: false, error: `文件不存在: ${filePath}` };
+    const fileBuffer = fs.readFileSync(filePath);
+    const name = fileName || path.basename(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeMap = { '.pdf': 'application/pdf', '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.zip': 'application/zip', '.txt': 'text/plain', '.csv': 'text/csv', '.json': 'application/json' };
+    const contentType = mimeMap[ext] || 'application/octet-stream';
+
+    const result = await feishuUpload('/open-apis/im/v1/files', {
+      file_type: 'stream',
+      file_name: name,
+      file: Object.assign(fileBuffer, { filename: name, contentType }),
+    });
+
+    if (result.success && result.data?.file_key) {
+      return { success: true, fileKey: result.data.file_key, fileName: name };
+    }
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ====== 持久化飞书配置（供主进程上传用）======
+
+ipcMain.handle('feishu:saveConfigFile', async (_event, appId, appSecret) => {
+  try {
+    const configPath = path.join(app.getPath('userData'), 'cc_feishu_config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ appId, appSecret, updatedAt: Date.now() }), 'utf-8');
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});

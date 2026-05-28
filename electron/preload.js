@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   feishuConfigure: (appId, appSecret) => ipcRenderer.invoke('feishu:configure', appId, appSecret),
   feishuStatus: () => ipcRenderer.invoke('feishu:status'),
   feishuDisconnect: () => ipcRenderer.invoke('feishu:disconnect'),
+  feishuUploadImage: (filePath) => ipcRenderer.invoke('feishu:uploadImage', filePath),
+  feishuUploadFile: (filePath, fileName) => ipcRenderer.invoke('feishu:uploadFile', filePath, fileName),
+  feishuSaveConfigFile: (appId, appSecret) => ipcRenderer.invoke('feishu:saveConfigFile', appId, appSecret),
   onFeishuMessage: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('feishu:message', handler);

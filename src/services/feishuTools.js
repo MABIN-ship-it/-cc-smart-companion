@@ -5,9 +5,9 @@
  */
 import {
   getFeishuConfig, getTenantAccessToken, feishuApi,
-  sendMessage, getChatList, getUserList, searchContacts,
+  sendMessage, sendImageMessage, sendFileMessage, getChatList, getUserList, searchContacts,
   createDocument, createBase, getMessageList, listBaseTables, searchBaseRecords,
-  addBaseRecord, updateBaseRecord, getMyOpenId, checkPermissions,
+  addBaseRecord, updateBaseRecord, getMyOpenId, setMyOpenId, checkPermissions,
 } from './feishu';
 
 const FEISHU_BASE_URL = 'https://open.feishu.cn/open-apis';
@@ -248,11 +248,65 @@ export async function feishuSendToMe(input) {
   if (!content) return '请提供消息内容(content)';
   try {
     const myId = await getMyOpenId();
-    if (!myId) return '无法获取当前用户ID，请先连接飞书';
+    if (!myId) {
+      return '无法确定你的飞书身份。请尝试以下方法：\n'
+        + '1. 在工具箱→飞书配置→点击"搜索我的飞书号"\n'
+        + '2. 或者告诉我你的飞书名字，我帮你搜索，例如"搜索飞书联系人 张三"\n'
+        + '3. 找到后告诉我"设定我的飞书身份为XXX"';
+    }
     const result = await sendMessage('open_id', myId, content);
     return result?.messageId ? `消息已发送到你的飞书聊天窗口，messageId: ${result.messageId}` : '消息发送失败';
   } catch (e) {
     return `发送失败: ${e.message}`;
+  }
+}
+
+// ─── 工具：搜索并设定自己的飞书身份 ───────────────
+
+export async function feishuSetMyIdentity(input) {
+  const { query } = input || {};
+  if (!query) return '请提供你的飞书名字或关键词来搜索，例如"设定我的飞书身份为 张三"';
+
+  try {
+    const contacts = await searchContacts(query);
+    if (!contacts?.items?.length) {
+      return `未找到与"${query}"相关的联系人。请尝试更准确的姓名。`;
+    }
+
+    // 如果只有一个结果，直接设定
+    if (contacts.items.length === 1) {
+      const user = contacts.items[0];
+      setMyOpenId(user.open_id || user.id);
+      return `已设定你的飞书身份为：${user.name || user.id}（open_id: ${user.open_id || user.id}）`;
+    }
+
+    // 多个结果，列出让用户选择
+    const list = contacts.items.map((c, i) =>
+      `${i + 1}. ${c.name || c.id}（${c.department || ''}）`
+    ).join('\n');
+    return `找到 ${contacts.items.length} 个匹配的联系人：\n${list}\n\n请告诉我是第几个，例如"选第1个"。`;
+  } catch (e) {
+    return `搜索失败: ${e.message}`;
+  }
+}
+
+/**
+ * 通过序号选定身份
+ */
+export async function feishuSelectIdentity(input) {
+  const { query, index } = input || {};
+  if (!query || index === undefined) return '请提供搜索关键词(query)和序号(index)';
+
+  try {
+    const contacts = await searchContacts(query);
+    if (!contacts?.items?.length || !contacts.items[index - 1]) {
+      return '未找到匹配的联系人或序号无效。';
+    }
+    const user = contacts.items[index - 1];
+    setMyOpenId(user.open_id || user.id);
+    return `已设定你的飞书身份为：${user.name || user.id}`;
+  } catch (e) {
+    return `设定失败: ${e.message}`;
   }
 }
 
@@ -272,6 +326,52 @@ export async function feishuCheckPermissions() {
 }
 
 // ─── 工具定义（给 LLM 的 schema） ──────────────────────
+
+// ─── 工具：发送图片到飞书 ──────────────────────────
+
+export async function feishuSendImage(input) {
+  const { file_path, receive_id_type, receive_id } = input || {};
+  if (!file_path) return '请提供图片文件路径(file_path)。';
+  try {
+    const uploadResult = await window.electronAPI?.feishuUploadImage?.(file_path);
+    if (!uploadResult?.success) return `图片上传失败: ${uploadResult?.error || '未知错误'}`;
+
+    const recvType = receive_id_type || 'open_id';
+    const recvId = receive_id || await getMyOpenId();
+    if (!recvId) return '无法确定接收人，请先设定飞书身份。';
+
+    const sendResult = await sendImageMessage(recvType, recvId, uploadResult.imageKey);
+    return sendResult?.messageId
+      ? `图片已发送到飞书，messageId: ${sendResult.messageId}`
+      : '图片发送失败';
+  } catch (e) {
+    return `发送图片失败: ${e.message}`;
+  }
+}
+
+// ─── 工具：发送文件到飞书 ──────────────────────────
+
+export async function feishuSendFile(input) {
+  const { file_path, file_name, receive_id_type, receive_id } = input || {};
+  if (!file_path) return '请提供文件路径(file_path)。';
+  try {
+    const uploadResult = await window.electronAPI?.feishuUploadFile?.(file_path, file_name || undefined);
+    if (!uploadResult?.success) return `文件上传失败: ${uploadResult?.error || '未知错误'}`;
+
+    const recvType = receive_id_type || 'open_id';
+    const recvId = receive_id || await getMyOpenId();
+    if (!recvId) return '无法确定接收人，请先设定飞书身份。';
+
+    const sendResult = await sendFileMessage(recvType, recvId, uploadResult.fileKey, uploadResult.fileName || file_name);
+    return sendResult?.messageId
+      ? `文件已发送到飞书，messageId: ${sendResult.messageId}`
+      : '文件发送失败';
+  } catch (e) {
+    return `发送文件失败: ${e.message}`;
+  }
+}
+
+// ─── 工具定义 ─────────────────────────────────────
 
 export const FEISHU_TOOLS = [
   {
@@ -355,6 +455,56 @@ export const FEISHU_TOOLS = [
       properties: {},
     },
   },
+  {
+    name: 'feishu_set_my_identity',
+    description: '搜索并设定用户的飞书身份。当CC不知道用户的飞书open_id时调用此工具搜索。用户说"设定我的飞书身份"、"我是飞书上的XXX"时调用。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '用户名或关键词搜索飞书通讯录' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'feishu_select_identity',
+    description: '从搜索结果中选择一个联系人作为用户的飞书身份。搜索返回多个结果时，用户选择第几个就调用此工具。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '之前搜索的关键词（用于重新搜索）' },
+        index: { type: 'number', description: '选择的序号（1-based）' },
+      },
+      required: ['query', 'index'],
+    },
+  },
+  {
+    name: 'feishu_send_image',
+    description: '上传本地图片并发送到飞书。用户说"把这个图片发到飞书"、"发这张图给我"时调用。需要先知道文件路径（通常在聊天对话的上下文中）。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: '本地图片文件路径，如 C:/Users/lenovo/Desktop/photo.jpg' },
+        receive_id_type: { type: 'string', description: '接收者类型：open_id/chat_id（可选，默认发给自己）' },
+        receive_id: { type: 'string', description: '接收者ID（可选，默认发给自己）' },
+      },
+      required: ['file_path'],
+    },
+  },
+  {
+    name: 'feishu_send_file',
+    description: '上传本地文件并发送到飞书。用户说"把这个文件发到飞书"、"发这份文档给我"时调用。需要先知道文件路径。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: '本地文件路径' },
+        file_name: { type: 'string', description: '文件名（可选，默认取路径中的文件名）' },
+        receive_id_type: { type: 'string', description: '接收者类型：open_id/chat_id（可选）' },
+        receive_id: { type: 'string', description: '接收者ID（可选）' },
+      },
+      required: ['file_path'],
+    },
+  },
 ];
 
 export const FEISHU_EXECUTORS = {
@@ -365,4 +515,8 @@ export const FEISHU_EXECUTORS = {
   feishu_search_contacts: feishuSearchContacts,
   feishu_send_to_me: feishuSendToMe,
   feishu_check_permissions: feishuCheckPermissions,
+  feishu_set_my_identity: feishuSetMyIdentity,
+  feishu_select_identity: feishuSelectIdentity,
+  feishu_send_image: feishuSendImage,
+  feishu_send_file: feishuSendFile,
 };

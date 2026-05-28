@@ -24,6 +24,8 @@ export function saveFeishuConfig(appId, appSecret) {
   localStorage.setItem(FEISHU_CONFIG_KEY, JSON.stringify(config));
   // 同时持久化凭证（明文，方便自动重连）
   localStorage.setItem(FEISHU_CREDENTIALS_KEY, JSON.stringify({ appId, appSecret }));
+  // 同步到主进程（供上传文件时读取 token）
+  try { window.electronAPI?.feishuSaveConfigFile?.(appId, appSecret); } catch {}
   return config;
 }
 
@@ -156,6 +158,22 @@ export async function sendMessage(receiveIdType, receiveId, content, msgType = '
   };
   const result = await feishuApi('POST', `/im/v1/messages?receive_id_type=${receiveIdType}`, body);
   return { success: true, messageId: result.data?.message_id, data: result.data };
+}
+
+/**
+ * 发送图片消息（需先在主进程上传获取 image_key）
+ */
+export async function sendImageMessage(receiveIdType, receiveId, imageKey) {
+  const content = JSON.stringify({ image_key: imageKey });
+  return sendMessage(receiveIdType, receiveId, content, 'image');
+}
+
+/**
+ * 发送文件消息（需先在主进程上传获取 file_key）
+ */
+export async function sendFileMessage(receiveIdType, receiveId, fileKey, fileName) {
+  const content = JSON.stringify({ file_key: fileKey, file_name: fileName || 'file' });
+  return sendMessage(receiveIdType, receiveId, content, 'file');
 }
 
 export async function getMessageList(containerId, containerIdType = 'chat', { pageSize = 50, pageToken } = {}) {
@@ -302,6 +320,17 @@ export function onFeishuMessage(callback) {
 }
 
 export function dispatchFeishuMessage(data) {
+  // 自动缓存发送者的 open_id 作为用户身份（收到第一条飞书消息时）
+  try {
+    if (!localStorage.getItem('cc_feishu_my_open_id')) {
+      const senderId = extractSenderOpenId(data);
+      if (senderId) {
+        localStorage.setItem('cc_feishu_my_open_id', senderId);
+        console.log('[Feishu] 自动缓存用户 open_id:', senderId);
+      }
+    }
+  } catch {}
+
   messageCallbacks.forEach(cb => {
     try { cb(data); } catch {}
   });
@@ -377,6 +406,43 @@ export async function replyToMessage(eventData, customReply) {
 // ─── 当前用户 ─────────────────────────────────────
 
 let _cachedMyInfo = null;
+const MY_OPEN_ID_KEY = 'cc_feishu_my_open_id';
+
+/**
+ * 尝试多种方式获取用户的 open_id（回退链）
+ * 优先级：用户手动设定 > /contact/v3/users/me > 通讯录首个用户 > 空
+ */
+export async function getMyOpenId() {
+  // 1. 用户手动设定的 open_id
+  const manualId = localStorage.getItem(MY_OPEN_ID_KEY);
+  if (manualId) return manualId;
+
+  // 2. 尝试 /contact/v3/users/me
+  try {
+    const info = await getMyUserInfo();
+    if (info?.open_id) return info.open_id;
+  } catch {}
+
+  // 3. 从通讯录取首个用户（回退方案）
+  try {
+    const users = await getUserList({ pageSize: 1 });
+    if (users?.length && users[0]?.open_id) {
+      // 自动缓存，避免重复拉取
+      localStorage.setItem(MY_OPEN_ID_KEY, users[0].open_id);
+      return users[0].open_id;
+    }
+  } catch {}
+
+  return '';
+}
+
+/**
+ * 设定用户的飞书身份（手动搜索并确认后调用）
+ */
+export function setMyOpenId(openId) {
+  localStorage.setItem(MY_OPEN_ID_KEY, openId);
+  _cachedMyInfo = null; // 清除旧缓存
+}
 
 /**
  * 获取当前飞书用户信息（带缓存）
@@ -390,14 +456,6 @@ export async function getMyUserInfo() {
   } catch {
     return null;
   }
-}
-
-/**
- * 获取当前用户的 open_id
- */
-export async function getMyOpenId() {
-  const info = await getMyUserInfo();
-  return info?.open_id || '';
 }
 
 /**
