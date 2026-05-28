@@ -481,6 +481,31 @@ const PERMISSION_CHECKS = [
   { domain: 'mind_notes', label: '思维导图', test: { method: 'GET', path: '/mind_notes/v1/mind_notes?page_size=1' } },
 ];
 
+// ─── 所需 OAuth Scope 列表（一键复制用）──────────
+
+const REQUIRED_SCOPES = [
+  'im:message', 'im:message:send_as_bot', 'im:chat', 'im:chat:readonly',
+  'docx:document', 'docx:document:create', 'bitable:app', 'wiki:wiki',
+  'contact:contact', 'contact:user', 'calendar:calendar',
+  'approval:instance', 'task:task', 'mail:mail', 'minutes:minute', 'mind_notes:mind_note',
+];
+
+export function getRequiredScopes() {
+  return [...REQUIRED_SCOPES];
+}
+
+export async function copyScopesToClipboard() {
+  const text = REQUIRED_SCOPES.join('\n');
+  await navigator.clipboard.writeText(text);
+  return REQUIRED_SCOPES.length;
+}
+
+export function getFeishuPermissionUrl() {
+  const config = getFeishuConfig();
+  if (!config?.appId) return 'https://open.feishu.cn';
+  return `https://open.feishu.cn/app/${config.appId}/permission`;
+}
+
 /**
  * 一次性检测所有飞书 API 权限
  * @returns {Promise<{results: Array<{domain, label, ok, error}>}>}
@@ -535,7 +560,8 @@ export function getSetupGuide() {
 
 ### 第三步：配置权限（关键！）
 连接成功后，CC 会自动检测权限状态。
-请在飞书开发者后台 "权限管理" 中搜索并开通以下权限：
+推荐使用 CC 面板中的「一键打开权限页面」+「复制所需权限」快速配置，
+或手动在飞书开发者后台 "权限管理" 中搜索并开通以下权限：
 
 **消息与群聊：**
 - im:message（收发消息）
