@@ -605,10 +605,55 @@ export async function replyToMessage(eventData, customReply) {
 export async function sendCreationNotification(type, title, url) {
   try {
     if (!url) return;
-    const myId = await getMyOpenId();
-    if (!myId) return;
-    await sendMessage('open_id', myId, `CC 已为你创建了${type}：${title}\n${url}`);
+    const target = await resolveReceiveTarget();
+    if (!target) return;
+    await sendMessage(target.receiveIdType, target.receiveId, `CC 已为你创建了${type}：${title}\n${url}`);
   } catch { /* 通知失败不影响主流程 */ }
+}
+
+// ─── 默认接收上下文（统一飞书会话） ────────────────────
+
+const DEFAULT_RECEIVE_KEY = 'cc_feishu_default_receive';
+
+/**
+ * 获取默认接收上下文 —— CC 记住用户首次联系的会话，
+ * 后续所有主动通知/消息都发往同一个会话。
+ * @returns {{ receiveIdType: string, receiveId: string } | null}
+ */
+export function getDefaultReceiveContext() {
+  try {
+    const raw = localStorage.getItem(DEFAULT_RECEIVE_KEY);
+    if (!raw) return null;
+    const ctx = JSON.parse(raw);
+    if (ctx.receiveIdType && ctx.receiveId) return ctx;
+  } catch {}
+  return null;
+}
+
+/**
+ * 设定默认接收上下文（首次在飞书联系 CC 时自动调用）
+ * @param {'chat_id'|'open_id'} receiveIdType
+ * @param {string} receiveId
+ */
+export function setDefaultReceiveContext(receiveIdType, receiveId) {
+  try {
+    localStorage.setItem(DEFAULT_RECEIVE_KEY, JSON.stringify({
+      receiveIdType,
+      receiveId,
+      source: 'first_message',
+      setAt: Date.now(),
+    }));
+  } catch {}
+}
+
+/**
+ * 获取默认接收上下文或回退到当前用户 open_id
+ */
+async function resolveReceiveTarget() {
+  const def = getDefaultReceiveContext();
+  if (def) return def;
+  const myId = await getMyOpenId();
+  return myId ? { receiveIdType: 'open_id', receiveId: myId } : null;
 }
 
 // ─── 当前用户 ─────────────────────────────────────

@@ -8,6 +8,7 @@ import {
   sendMessage, sendCardMessage, getChatList,
   extractTextFromEvent, extractSenderOpenId,
   isFeishuConfigured, getMyOpenId,
+  setDefaultReceiveContext, getDefaultReceiveContext,
 } from './feishu';
 import { sendModelRequest, getCurrentModel, getApiKey } from './modelAdapter';
 import { getTaskExecutionHints } from './feishuTaskExecutor';
@@ -232,6 +233,15 @@ export async function handleIncomingMessage(eventData) {
 
   const parsed = parseIncomingMessage(eventData);
   if (!parsed) return null;
+
+  // 首次联系 → 记住这个会话
+  if (!getDefaultReceiveContext()) {
+    if (parsed.chatType === 'group' && parsed.chatId) {
+      setDefaultReceiveContext('chat_id', parsed.chatId);
+    } else if (parsed.chatType === 'private' && parsed.senderId) {
+      setDefaultReceiveContext('open_id', parsed.senderId);
+    }
+  }
 
   const should = await shouldReply(parsed);
   if (!should) return null;

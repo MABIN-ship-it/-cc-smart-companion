@@ -11,6 +11,7 @@ import {
   addTable, listTableFields, addTableFields,
   getMyOpenId, setMyOpenId, checkPermissions, sendCreationNotification,
   readDocumentContent, extractFeishuDocUrls,
+  getDefaultReceiveContext,
 } from './feishu';
 import { getWorkspaceContext } from './toolRegistry';
 
@@ -84,11 +85,17 @@ export async function feishuSendMessage(input) {
   if (!content) {
     return '请提供消息内容(content)。例如：{ "content": "你好" }';
   }
-  // 如果未指定接收人，自动发给当前用户
+  // 如果未指定接收人：优先默认会话 → 回退到当前用户
   if (!receive_id) {
     try {
-      receive_id = await getMyOpenId();
-      receive_id_type = 'open_id';
+      const def = getDefaultReceiveContext();
+      if (def) {
+        receive_id = def.receiveId;
+        receive_id_type = def.receiveIdType;
+      } else {
+        receive_id = await getMyOpenId();
+        receive_id_type = 'open_id';
+      }
     } catch {
       return '无法获取当前用户ID，请先连接飞书或手动指定 receive_id。';
     }
@@ -368,14 +375,24 @@ export async function feishuSendToMe(input) {
   const { content } = input || {};
   if (!content) return '请提供消息内容(content)';
   try {
-    const myId = await getMyOpenId();
-    if (!myId) {
-      return '无法确定你的飞书身份。请尝试以下方法：\n'
-        + '1. 在工具箱→飞书配置→点击"搜索我的飞书号"\n'
-        + '2. 或者告诉我你的飞书名字，我帮你搜索，例如"搜索飞书联系人 张三"\n'
-        + '3. 找到后告诉我"设定我的飞书身份为XXX"';
+    // 优先默认会话 → 回退到当前用户 open_id
+    const def = getDefaultReceiveContext();
+    let receiveIdType, receiveId;
+    if (def) {
+      receiveIdType = def.receiveIdType;
+      receiveId = def.receiveId;
+    } else {
+      const myId = await getMyOpenId();
+      if (!myId) {
+        return '无法确定你的飞书身份。请尝试以下方法：\n'
+          + '1. 在工具箱→飞书配置→点击"搜索我的飞书号"\n'
+          + '2. 或者告诉我你的飞书名字，我帮你搜索，例如"搜索飞书联系人 张三"\n'
+          + '3. 找到后告诉我"设定我的飞书身份为XXX"';
+      }
+      receiveIdType = 'open_id';
+      receiveId = myId;
     }
-    const result = await sendMessage('open_id', myId, content);
+    const result = await sendMessage(receiveIdType, receiveId, content);
     return result?.messageId ? `消息已发送到你的飞书聊天窗口，messageId: ${result.messageId}` : '消息发送失败';
   } catch (e) {
     return `发送失败: ${e.message}`;

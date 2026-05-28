@@ -10,7 +10,7 @@ import { startProactiveEngine } from '../services/proactive';
 import { startScheduledScan, stopScheduledScan, detectTaskFromMessage } from '../services/feishuMonitor';
 import { handleIncomingMessage, getBotConfig } from '../services/feishuBotService';
 import FeishuTaskPanel from './FeishuTaskPanel';
-import { dispatchFeishuMessage, extractTextFromEvent, extractMessageContext, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
+import { dispatchFeishuMessage, extractTextFromEvent, extractMessageContext, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig, setDefaultReceiveContext, getDefaultReceiveContext } from '../services/feishu';
 import { createExpressionEngine } from '../services/expressionEngine';
 import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
@@ -342,6 +342,21 @@ export default function ChatInterface() {
         const msgCtx = extractMessageContext(data);
         if (!msgCtx) return;
 
+        // 提取会话元数据 → 统一会话路由
+        const eventMsg = data?.event?.message || data?.message || {};
+        const chatId = eventMsg.chat_id || '';
+        const chatType = eventMsg.chat_type || 'private';
+        const senderId = data?.event?.sender?.sender_id?.open_id || data?.sender?.sender_id?.open_id || '';
+
+        // 首次联系 → 记住这个会话，后续所有通知都发到这里
+        if (!getDefaultReceiveContext()) {
+          if (chatType === 'group' && chatId) {
+            setDefaultReceiveContext('chat_id', chatId);
+          } else if (chatType === 'private' && senderId) {
+            setDefaultReceiveContext('open_id', senderId);
+          }
+        }
+
         const msgText = msgCtx.text || msgCtx.description || '';
         let enhancedText = `[来自飞书] ${msgText}`;
         if (msgCtx.docUrls?.length) {
@@ -354,8 +369,10 @@ export default function ChatInterface() {
           enhancedText += `\n[消息含图片, message_id: ${msgCtx.messageId}, image_key: ${msgCtx.imageKey}，可用feishu_download_resource下载查看]`;
         }
 
-        // 将飞书消息送入完整AI处理流程（和CC聊天互通、记忆互通）
-        feishuReplyRef.current = { type: 'reply', eventData: data };
+        // 群聊消息 → 回复到群里，私聊消息 → 回复给发送者
+        feishuReplyRef.current = chatType === 'group' && chatId
+          ? { type: 'chat', chatId }
+          : { type: 'reply', eventData: data };
         processUserMessageRef.current?.(enhancedText, { source: 'feishu', feishuData: data, msgCtx });
 
         // 实时任务检测（仅文本消息）
@@ -371,7 +388,9 @@ export default function ChatInterface() {
                   ...detectedTask,
                   type: detectedTask.priority || 'medium',
                   onAccept: (instruction) => {
-                    feishuReplyRef.current = { type: 'reply', eventData: data };
+                    feishuReplyRef.current = chatType === 'group' && chatId
+                      ? { type: 'chat', chatId }
+                      : { type: 'reply', eventData: data };
                     processUserMessageRef.current?.(instruction, { source: 'feishu_proactive', feishuData: data });
                   },
                 };
