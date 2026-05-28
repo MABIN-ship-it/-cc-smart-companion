@@ -1448,6 +1448,28 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
       result.textContent = buffer.toString('utf-8').slice(0, 8000);
     }
 
+    // Excel 文件用 ExcelJS 解析
+    const excelExts = ['.xlsx', '.xlsm', '.xls', '.xltx', '.xltm'];
+    if (excelExts.includes(ext)) {
+      try {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const sheets = workbook.worksheets.map(ws => {
+          const rows = [];
+          ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+            if (rowNum > 100) return;
+            const cells = [];
+            row.eachCell({ includeEmpty: false }, (cell) => {
+              cells.push(cell.text || String(cell.value ?? ''));
+            });
+            if (cells.length) rows.push(cells.join('\t'));
+          });
+          return `[${ws.name}]\n${rows.join('\n')}`;
+        });
+        result.textContent = sheets.join('\n\n').slice(0, 8000);
+      } catch { /* Excel 解析失败不留 textContent */ }
+    }
+
     return result;
   } catch (e) {
     return { success: false, error: e.message };
