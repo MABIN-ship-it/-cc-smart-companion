@@ -541,7 +541,7 @@ export async function feishuReadDocument(input) {
 // ─── 工具：下载飞书消息中的文件/图片 ──────────────
 
 export async function feishuDownloadResource(input) {
-  const { message_id, file_key, type } = input || {};
+  const { message_id, file_key, type, file_name } = input || {};
   if (!message_id || !file_key) return '请提供 message_id 和 file_key（从飞书消息上下文中获取）。';
   const resourceType = type === 'image' ? 'image' : 'file';
 
@@ -549,7 +549,7 @@ export async function feishuDownloadResource(input) {
     if (!window.electronAPI?.feishuDownloadResource) {
       return '文件下载功能不可用，请重启应用。';
     }
-    const result = await window.electronAPI.feishuDownloadResource(message_id, file_key, resourceType);
+    const result = await window.electronAPI.feishuDownloadResource(message_id, file_key, resourceType, file_name);
     if (!result?.success) return `下载失败: ${result?.error || '未知错误'}`;
 
     let response = `文件已下载到: ${result.filePath}（${result.fileName}, ${(result.fileSize / 1024).toFixed(1)}KB）`;
@@ -715,13 +715,14 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_download_resource',
-    description: '从飞书消息中下载文件或图片。当用户通过飞书发送文件/图片给CC，CC需要查看内容时调用。需要提供消息的message_id和file_key（可从飞书消息上下文中获取）。',
+    description: '从飞书消息中下载文件或图片。当用户通过飞书发送文件/图片给CC，CC需要查看内容时调用。需要提供消息的message_id和file_key（可从飞书消息上下文中获取）。file_name从消息上下文中的fileName获取。',
     input_schema: {
       type: 'object',
       properties: {
         message_id: { type: 'string', description: '飞书消息ID' },
         file_key: { type: 'string', description: '文件/图片的file_key' },
         type: { type: 'string', description: '类型：file 或 image' },
+        file_name: { type: 'string', description: '原始文件名，从消息上下文的fileName获取（如"报告.xlsx"），用于保留正确的中文文件名' },
       },
       required: ['message_id', 'file_key'],
     },

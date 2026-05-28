@@ -1355,7 +1355,7 @@ ipcMain.handle('feishu:saveConfigFile', async (_event, appId, appSecret) => {
 
 // ====== 飞书资源下载（从消息中下载文件/图片）======
 
-ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, type) => {
+ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, type, preferredFileName) => {
   try {
     const token = await feishuGetToken();
     const resourceType = type === 'image' ? 'image' : 'file';
@@ -1371,7 +1371,6 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
         },
         timeout: 30000,
       }, (res) => {
-        // 检查 HTTP 状态码判断是否是二进制响应还是 JSON 错误
         const contentType = res.headers['content-type'] || '';
         if (contentType.includes('application/json')) {
           let data = '';
@@ -1387,12 +1386,36 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
         // 二进制响应
         const chunks = [];
         const disposition = res.headers['content-disposition'] || '';
-        const nameMatch = disposition.match(/filename\*?=(?:UTF-8'')?(.+?)(?:;|$)/i)
-          || disposition.match(/filename="?(.+?)"?$/i);
-        const rawName = nameMatch ? decodeURIComponent(nameMatch[1]) : `${fileKey}.bin`;
-        resolve({ chunks, contentType, fileName: rawName });
+
+        // 解析文件名: 优先 RFC5987 (filename*=UTF-8''...), 其次普通 filename=
+        let parsedName = null;
+        // RFC 5987: filename*=UTF-8''url-encoded-name
+        const rfcMatch = disposition.match(/filename\*=\s*UTF-8''([^;]+)/i);
+        if (rfcMatch) {
+          try { parsedName = decodeURIComponent(rfcMatch[1]); } catch {}
+        }
+        if (!parsedName) {
+          // 普通 filename="..." 或 filename=xxx
+          const plainMatch = disposition.match(/filename="?([^";\r\n]+)"?/i);
+          if (plainMatch) {
+            const raw = plainMatch[1].trim();
+            // Node.js HTTP 头以 Latin-1 解析，若含中文需恢复 UTF-8 字节
+            try {
+              const latin1Bytes = Buffer.from(raw, 'latin1');
+              const utf8Decoded = latin1Bytes.toString('utf8');
+              parsedName = /[一-鿿]/.test(utf8Decoded) ? utf8Decoded : raw;
+            } catch {
+              parsedName = raw;
+            }
+          }
+        }
+        // 回退使用消息中的原始文件名（最可靠）
+        if (!parsedName && preferredFileName) parsedName = preferredFileName;
+        if (!parsedName) parsedName = `${fileKey}.bin`;
+
+        resolve({ chunks, contentType, fileName: parsedName });
         res.on('data', chunk => chunks.push(chunk));
-        res.on('end', () => resolve({ chunks, contentType, fileName: rawName }));
+        res.on('end', () => resolve({ chunks, contentType, fileName: parsedName }));
       });
       req.on('error', reject);
       req.on('timeout', () => { req.destroy(); reject(new Error('下载超时(30s)')); });
