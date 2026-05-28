@@ -1353,6 +1353,23 @@ ipcMain.handle('feishu:saveConfigFile', async (_event, appId, appSecret) => {
   }
 });
 
+// ====== ExcelJS 辅助函数 ======
+function extractExcelSheets(workbook) {
+  const sheets = workbook.worksheets.map(ws => {
+    const rows = [];
+    ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+      if (rowNum > 100) return;
+      const cells = [];
+      row.eachCell({ includeEmpty: false }, (cell) => {
+        cells.push(cell.text || String(cell.value ?? ''));
+      });
+      if (cells.length) rows.push(cells.join('\t'));
+    });
+    return `[${ws.name}]\n${rows.join('\n')}`;
+  });
+  return sheets.join('\n\n').slice(0, 8000);
+}
+
 // ====== 飞书资源下载（从消息中下载文件/图片）======
 
 ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, type, preferredFileName) => {
@@ -1454,20 +1471,45 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
       try {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(buffer);
-        const sheets = workbook.worksheets.map(ws => {
-          const rows = [];
-          ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
-            if (rowNum > 100) return;
-            const cells = [];
-            row.eachCell({ includeEmpty: false }, (cell) => {
-              cells.push(cell.text || String(cell.value ?? ''));
+        result.textContent = extractExcelSheets(workbook);
+      } catch {
+        // .xls 旧格式尝试 Python 转换后重试
+        if (ext === '.xls') {
+          try {
+            const xlsxPath = filePath.replace(/\.xls$/i, '_converted.xlsx');
+            const pyScript = `import sys
+try:
+    import pandas as pd
+    df = pd.read_excel(r"${filePath.replace(/\\/g, '\\\\')}", sheet_name=None, engine='xlrd')
+    with pd.ExcelWriter(r"${xlsxPath.replace(/\\/g, '\\\\')}", engine='openpyxl') as w:
+        for name, sheet in df.items():
+            sheet.to_excel(w, sheet_name=name, index=False)
+    print('OK')
+except Exception as e:
+    print('FAIL:' + str(e))
+`;
+            const tmpPy = filePath.replace(/\.xls$/i, '.py');
+            fs.writeFileSync(tmpPy, pyScript, 'utf-8');
+            const { stdout } = await new Promise((resolve) => {
+              exec(`python "${tmpPy}"`, { timeout: 30000, windowsHide: true }, (_err, _stdout, _stderr) => {
+                resolve({ stdout: (_stdout || '') + (_stderr || '') });
+              });
             });
-            if (cells.length) rows.push(cells.join('\t'));
-          });
-          return `[${ws.name}]\n${rows.join('\n')}`;
-        });
-        result.textContent = sheets.join('\n\n').slice(0, 8000);
-      } catch { /* Excel 解析失败不留 textContent */ }
+            try { fs.unlinkSync(tmpPy); } catch {}
+            if (stdout.includes('OK') && fs.existsSync(xlsxPath)) {
+              const xlsxBuf = fs.readFileSync(xlsxPath);
+              const wb2 = new ExcelJS.Workbook();
+              await wb2.xlsx.load(xlsxBuf);
+              result.textContent = extractExcelSheets(wb2);
+              try { fs.unlinkSync(xlsxPath); } catch {}
+            } else {
+              result.textContent = '[此文件为旧版 .xls 格式，请用 Excel/WPS 另存为 .xlsx 后重新发送]';
+            }
+          } catch {
+            result.textContent = '[此文件为旧版 .xls 格式，请用 Excel/WPS 另存为 .xlsx 后重新发送]';
+          }
+        }
+      }
     }
 
     return result;
