@@ -3,7 +3,7 @@
  */
 import { useState } from 'react';
 import { useApp } from '../store/AppContext';
-import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection } from '../services/feishu';
+import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection, checkPermissions } from '../services/feishu';
 
 /* 飞书品牌风格图标 — 蓝色圆角方底+白色抽象对话图形 */
 function FeishuIcon({ size = 40 }) {
@@ -37,6 +37,8 @@ export default function ToolboxPanel() {
   const [connecting, setConnecting] = useState(false);
   const [configMsg, setConfigMsg] = useState('');
   const [showGuide, setShowGuide] = useState(false);
+  const [permResults, setPermResults] = useState(null);
+  const [checkingPerms, setCheckingPerms] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
   const feishuConnecting = state.feishuStatus === 'connecting';
@@ -117,10 +119,22 @@ export default function ToolboxPanel() {
     }
   };
 
+  const handleCheckPermissions = async () => {
+    setCheckingPerms(true);
+    try {
+      const result = await checkPermissions();
+      setPermResults(result);
+    } catch (e) {
+      setConfigMsg(`error||权限检测失败: ${e.message}`);
+    }
+    setCheckingPerms(false);
+  };
+
   const handleDisconnect = async () => {
     await window.electronAPI?.feishuDisconnect();
     dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
     setConfigMsg('info||已断开连接');
+    setPermResults(null);
   };
 
   return (
@@ -269,6 +283,38 @@ export default function ToolboxPanel() {
                   </div>
                 )}
               </div>
+
+              {/* 权限自检面板 */}
+              {feishuConnected && (
+                <div className="feishu-perm-section">
+                  <div className="feishu-perm-header">
+                    <span>权限状态</span>
+                    <button
+                      className="feishu-perm-check-btn"
+                      onClick={handleCheckPermissions}
+                      disabled={checkingPerms}
+                    >
+                      {checkingPerms ? '检测中...' : '重新检测'}
+                    </button>
+                  </div>
+                  {permResults ? (
+                    <div className="feishu-perm-list">
+                      {permResults.results.map(r => (
+                        <div key={r.domain} className={`feishu-perm-item ${r.ok ? 'ok' : 'fail'}`}>
+                          <span className="feishu-perm-icon">{r.ok ? '✅' : '❌'}</span>
+                          <span className="feishu-perm-label">{r.label}</span>
+                          <span className="feishu-perm-domain">{r.domain}</span>
+                        </div>
+                      ))}
+                      <div className="feishu-perm-summary">
+                        {permResults.allOk ? '全部权限已开通 🎉' : `${permResults.okCount}/${permResults.total} 权限已开通，红色项需在飞书开发者后台配置`}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="feishu-perm-hint">点击"重新检测"查看权限状态</div>
+                  )}
+                </div>
+              )}
 
               {/* 状态消息 */}
               {configMsg && (() => {

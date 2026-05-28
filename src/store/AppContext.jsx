@@ -153,6 +153,12 @@ function appReducer(state, action) {
       return { ...state, proactivePrompts: action.payload };
     case 'DISMISS_PROACTIVE_PROMPT':
       return { ...state, proactivePrompts: state.proactivePrompts.filter(p => p.id !== action.payload) };
+    case 'ACCEPT_PROACTIVE_TASK': {
+      const tasks = state.proactivePrompts.map(p =>
+        p.id === action.payload ? { ...p, status: 'accepted' } : p
+      );
+      return { ...state, proactivePrompts: tasks };
+    }
     default:
       return state;
   }

@@ -17,6 +17,7 @@ import { getToolDefinitions } from './toolRegistry';
 import { getProfileContext } from './userProfile';
 import { getProjectContext } from './projectContext';
 import { getLessonsContext } from './lessonsLearned';
+import { getPersonalizedPrompt } from './preferenceLearner';
 import { estimateSystemPromptTokens } from '../utils/tokenCounter';
 import { searchKnowledge, buildRAGContext, listDocuments } from './knowledgeBase';
 import { getWebsiteBuilderPrompt } from './websiteBuilder';
@@ -409,6 +410,9 @@ export function buildSystemPrompt(state, userMessage, mode = 'chat') {
 
   const projectSection = getProjectContext();
 
+  // 个性化偏好（从用户反馈中学习）
+  const personalizedSection = getPersonalizedPrompt();
+
   const sections = [
     buildIdentitySection(),
     buildEnvironmentSection(state),
@@ -416,6 +420,7 @@ export function buildSystemPrompt(state, userMessage, mode = 'chat') {
     buildToolsSection(),
     ragSection,
     buildPersonalitySection(state),
+    personalizedSection,
     modeSection,
     buildExecutionRules(),
   ];

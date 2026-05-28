@@ -7,7 +7,8 @@ import { detectUserFeedback, addLesson } from '../services/lessonsLearned';
 import { addFavorite, addFeedback, addReport } from '../services/interactions';
 import { isSpeechSupported, isMediaRecorderSupported, startListening, speakText, stopListening, startVoiceRecording, stopVoiceRecording, cancelVoiceRecording, transcribeAudio } from '../services/speech';
 import { startProactiveEngine } from '../services/proactive';
-import { startScheduledScan, stopScheduledScan } from '../services/feishuMonitor';
+import { startScheduledScan, stopScheduledScan, detectTaskFromMessage } from '../services/feishuMonitor';
+import FeishuTaskPanel from './FeishuTaskPanel';
 import { dispatchFeishuMessage, extractTextFromEvent, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
 import { createExpressionEngine } from '../services/expressionEngine';
 import { createEmotionEngine } from '../services/emotionEngine';
@@ -341,43 +342,42 @@ export default function ChatInterface() {
         feishuReplyRef.current = { type: 'reply', eventData: data };
         processUserMessageRef.current?.(`[来自飞书] ${text}`, { source: 'feishu', feishuData: data });
 
-        // 同时做任务检测（长消息）
-        if (text.length > 10) {
-          import('../services/feishuMonitor.js').then(({ scanForTasks }) => {
-            scanForTasks().then(result => {
-              if (result.tasks?.length > 0) {
-                const prompts = result.tasks.map(t => ({
-                  id: t.id,
-                  description: t.description,
-                  senderName: t.senderName,
-                  chatName: t.chatName,
-                  capabilities: t.capabilities,
-                  type: t.type,
+        // 实时任务检测（LLM驱动）
+        if (text.length > 15) {
+          (async () => {
+            try {
+              const detectedTask = await detectTaskFromMessage(text, {
+                senderName: extractSenderOpenId(data) || '飞书用户',
+                chatName: '',
+              });
+              if (detectedTask) {
+                const prompt = {
+                  ...detectedTask,
+                  type: detectedTask.priority || 'medium',
                   onAccept: (instruction) => {
                     feishuReplyRef.current = { type: 'reply', eventData: data };
                     processUserMessageRef.current?.(instruction, { source: 'feishu_proactive', feishuData: data });
                   },
-                }));
-                dispatch({ type: 'SET_PROACTIVE_PROMPTS', payload: prompts });
+                };
+                dispatch({ type: 'SET_PROACTIVE_PROMPTS', payload: [prompt] });
               }
-            });
-          });
+            } catch {}
+          })();
         }
       });
     }
 
-    // 定时扫描（每日11:00/15:00/19:00 + 连接后5秒首次扫描）
+    // 定时扫描（9:00/11:00/15:00/17:00/19:00/24:00）
     startScheduledScan((tasks) => {
       const prompts = tasks.map(t => ({
-        id: t.id,
-        description: t.description,
-        senderName: t.senderName,
-        chatName: t.chatName,
-        capabilities: t.capabilities,
-        type: t.type,
+        ...t,
+        type: t.priority || t.type || 'medium',
         onAccept: (instruction) => {
-          feishuReplyRef.current = { type: 'chat', chatId: t.chatId };
+          feishuReplyRef.current = { type: 'chat', chatId: t.chatId || '' };
           processUserMessageRef.current?.(instruction, { source: 'feishu_proactive' });
+        },
+        onDismiss: () => {
+          import('../services/feishuTaskScanner.js').then(m => m.dismissTask(t.id));
         },
       }));
       dispatch({ type: 'SET_PROACTIVE_PROMPTS', payload: prompts });
@@ -526,6 +526,8 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
+      } else if (type === 'status') {
+        setStreamingText(data);
       }
     };
 
@@ -698,6 +700,8 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
+      } else if (type === 'status') {
+        setStreamingText(data);
       }
     };
 
@@ -901,6 +905,8 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
+      } else if (type === 'status') {
+        setStreamingText(data);
       }
     };
 
@@ -1309,6 +1315,7 @@ export default function ChatInterface() {
         </>
       )}
       {state.proactivePrompts?.length > 0 && <ProactivePrompt />}
+      {state.feishuStatus === 'connected' && <FeishuTaskPanel />}
       {knowledgeGraphPanelOpen && (
         <KnowledgeGraphPanel
           onClose={() => setKnowledgeGraphPanelOpen(false)}

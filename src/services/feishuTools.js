@@ -7,7 +7,7 @@ import {
   getFeishuConfig, getTenantAccessToken, feishuApi,
   sendMessage, getChatList, getUserList, searchContacts,
   createDocument, createBase, getMessageList, listBaseTables, searchBaseRecords,
-  addBaseRecord, updateBaseRecord,
+  addBaseRecord, updateBaseRecord, getMyOpenId, checkPermissions,
 } from './feishu';
 
 const FEISHU_BASE_URL = 'https://open.feishu.cn/open-apis';
@@ -52,13 +52,22 @@ async function apiCall(method, path, body) {
 // ─── 工具：发送消息 ───────────────────────────────
 
 export async function feishuSendMessage(input) {
-  const { receive_id_type, receive_id, content } = input;
-  if (!receive_id || !content) {
-    return '请指定接收人(receive_id)和消息内容(content)。例如：{ "receive_id_type": "open_id", "receive_id": "ou_xxx", "content": "你好" }';
+  let { receive_id_type, receive_id, content } = input;
+  if (!content) {
+    return '请提供消息内容(content)。例如：{ "content": "你好" }';
+  }
+  // 如果未指定接收人，自动发给当前用户
+  if (!receive_id) {
+    try {
+      receive_id = await getMyOpenId();
+      receive_id_type = 'open_id';
+    } catch {
+      return '无法获取当前用户ID，请先连接飞书或手动指定 receive_id。';
+    }
   }
   try {
     const result = await sendMessage(receive_id_type || 'open_id', receive_id, content);
-    return result?.messageId ? `消息已发送，messageId: ${result.messageId}` : '消息发送失败';
+    return result?.messageId ? `消息已发送到飞书，messageId: ${result.messageId}` : '消息发送失败';
   } catch (e) {
     return `发送失败: ${e.message}`;
   }
@@ -232,20 +241,50 @@ export async function feishuSearchContacts(input) {
   }
 }
 
+// ─── 工具：给自己发消息 ───────────────────────────────
+
+export async function feishuSendToMe(input) {
+  const { content } = input || {};
+  if (!content) return '请提供消息内容(content)';
+  try {
+    const myId = await getMyOpenId();
+    if (!myId) return '无法获取当前用户ID，请先连接飞书';
+    const result = await sendMessage('open_id', myId, content);
+    return result?.messageId ? `消息已发送到你的飞书聊天窗口，messageId: ${result.messageId}` : '消息发送失败';
+  } catch (e) {
+    return `发送失败: ${e.message}`;
+  }
+}
+
+// ─── 工具：权限自检 ───────────────────────────────
+
+export async function feishuCheckPermissions() {
+  try {
+    const { results, allOk, okCount, total } = await checkPermissions();
+    const lines = results.map(r =>
+      `${r.ok ? '✅' : '❌'} ${r.label}（${r.domain}）${!r.ok ? ' — 请在飞书开发者后台配置此权限' : ''}`
+    );
+    const summary = `飞书权限检测结果（${okCount}/${total} 已开通）：`;
+    return [summary, ...lines].join('\n');
+  } catch (e) {
+    return `权限检测失败: ${e.message}`;
+  }
+}
+
 // ─── 工具定义（给 LLM 的 schema） ──────────────────────
 
 export const FEISHU_TOOLS = [
   {
     name: 'feishu_send_message',
-    description: '发送消息到飞书用户或群聊',
+    description: '发送消息到飞书用户或群聊。如不指定接收人，自动发给自己。',
     input_schema: {
       type: 'object',
       properties: {
         receive_id_type: { type: 'string', description: '接收者类型：open_id/chat_id/user_id' },
-        receive_id: { type: 'string', description: '接收者ID' },
+        receive_id: { type: 'string', description: '接收者ID（可选，不填则发给自己）' },
         content: { type: 'string', description: '消息内容' },
       },
-      required: ['receive_id', 'content'],
+      required: ['content'],
     },
   },
   {
@@ -297,6 +336,25 @@ export const FEISHU_TOOLS = [
       required: ['query'],
     },
   },
+  {
+    name: 'feishu_send_to_me',
+    description: '发送消息到当前用户在飞书的聊天窗口。用户说"给我发消息"、"发到飞书"、"通知我"时调用此工具。无需指定接收人。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: '要发送的消息内容' },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'feishu_check_permissions',
+    description: '检测飞书应用的所有权限状态，列出哪些API可用、哪些需要配置。用户问"飞书能做什么"或连接有问题时调用。',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];
 
 export const FEISHU_EXECUTORS = {
@@ -305,4 +363,6 @@ export const FEISHU_EXECUTORS = {
   feishu_create_doc: feishuCreateDoc,
   feishu_base_operation: feishuBaseOperation,
   feishu_search_contacts: feishuSearchContacts,
+  feishu_send_to_me: feishuSendToMe,
+  feishu_check_permissions: feishuCheckPermissions,
 };

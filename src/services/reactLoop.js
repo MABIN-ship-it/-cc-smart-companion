@@ -16,11 +16,12 @@
  * - 智能错误恢复
  */
 
-import { sendModelRequestStream, sendModelRequest, getCurrentModel, buildToolResultsMessage, buildToolResultMessage, buildToolUseMessage } from './modelAdapter';
+import { sendModelRequestStream, sendModelRequest, getCurrentModel, getModelConfig, buildToolResultsMessage, buildToolResultMessage, buildToolUseMessage } from './modelAdapter';
 import { executeTool, getToolDefinitions, toolExists } from './toolRegistry';
 import { estimateMessagesTokens, getContextUsageRatio, shouldCompact, isNearLimit } from '../utils/tokenCounter';
 import { microCleanMessages, smartTruncateMessages } from './conversationCompactor';
 import { categorizeError, isRetryable } from './errorHandler';
+import { describeImages } from './visionProxy';
 
 const MAX_ITERATIONS = 10;
 const MAX_TOOL_OUTPUT = 3000;
@@ -168,6 +169,41 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     messages.push({ role: 'user', content: blocks });
   } else {
     messages.push({ role: 'user', content: userMessage });
+  }
+
+  // ── 视觉代理：非视觉模型用 OCR 提取图片文字 ──────────────
+  const modelCfg = getModelConfig(model);
+  if (!modelCfg?.vision) {
+    const lastUserMsg = messages[messages.length - 1];
+    const content = lastUserMsg?.content;
+    if (lastUserMsg?.role === 'user' && Array.isArray(content)) {
+      const imageBlocks = content.filter(b => b.type === 'image');
+      const textBlocks = content.filter(b => b.type === 'text');
+      if (imageBlocks.length > 0) {
+        onProgress?.({ type: 'status', data: '正在提取图片文字...' });
+        const ocrText = await describeImages(imageBlocks);
+        const textContent = textBlocks.map(b => b.text).join('\n');
+        const combined = ocrText
+          ? `${textContent}\n\n[以下为图片中提取的文字内容，供你参考：]\n${ocrText}\n[注：当前模型不支持图像识别，以上为OCR文字提取结果]`
+          : `${textContent}\n\n[注：用户发送了${imageBlocks.length}张图片，但当前模型不支持图像识别，图中也未检测到文字。建议切换至视觉模型。]`;
+        lastUserMsg.content = combined;
+      }
+    }
+    // 历史消息中的图片也做同样处理
+    for (let i = 0; i < messages.length - 1; i++) {
+      const m = messages[i];
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        const imgBlocks = m.content.filter(b => b.type === 'image');
+        if (imgBlocks.length > 0) {
+          const txtBlocks = m.content.filter(b => b.type === 'text');
+          const ocrText = await describeImages(imgBlocks);
+          const txt = txtBlocks.map(b => b.text).join('\n');
+          m.content = ocrText
+            ? `${txt}\n\n[历史图片文字]:\n${ocrText}`
+            : `${txt}\n[历史图片: ${imgBlocks.length}张]`;
+        }
+      }
+    }
   }
 
   // ── 第1级压缩：微清理 ──────────────────────────────────

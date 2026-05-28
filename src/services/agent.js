@@ -10,11 +10,12 @@
 
 import { runReActLoop } from './reactLoop';
 import { buildSystemPrompt } from './promptBuilder';
-import { sendModelRequest, sendModelRequestStream, getCurrentModel, getApiKey } from './modelAdapter';
+import { sendModelRequest, sendModelRequestStream, getCurrentModel, getModelConfig, getApiKey } from './modelAdapter';
 import { analyzeComplexity, delegateSubtasks } from './subagentDelegator';
 import { categorizeError } from './errorHandler';
 import { analyzeAndPlan } from './planMode';
 import { analyzeProject, updateLastTask } from './projectContext';
+import { describeImages } from './visionProxy';
 
 // ─── 主入口 ───────────────────────────────────────────────
 
@@ -165,6 +166,40 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, 
     messages.push({ role: 'user', content: blocks });
   } else {
     messages.push({ role: 'user', content: userMessage });
+  }
+
+  // ── 视觉代理：非视觉模型用 OCR 提取图片文字 ──────────────
+  const modelCfg = getModelConfig(model);
+  if (!modelCfg?.vision) {
+    const lastUserMsg = messages[messages.length - 1];
+    const content = lastUserMsg?.content;
+    if (lastUserMsg?.role === 'user' && Array.isArray(content)) {
+      const imageBlocks = content.filter(b => b.type === 'image');
+      const textBlocks = content.filter(b => b.type === 'text');
+      if (imageBlocks.length > 0) {
+        onProgress?.({ type: 'status', data: '正在提取图片文字...' });
+        const ocrText = await describeImages(imageBlocks);
+        const textContent = textBlocks.map(b => b.text).join('\n');
+        const combined = ocrText
+          ? `${textContent}\n\n[以下为图片中提取的文字内容，供你参考：]\n${ocrText}\n[注：当前模型不支持图像识别，以上为OCR文字提取结果]`
+          : `${textContent}\n\n[注：用户发送了${imageBlocks.length}张图片，但当前模型不支持图像识别，图中也未检测到文字。建议切换至视觉模型。]`;
+        lastUserMsg.content = combined;
+      }
+    }
+    for (let i = 0; i < messages.length - 1; i++) {
+      const m = messages[i];
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        const imgBlocks = m.content.filter(b => b.type === 'image');
+        if (imgBlocks.length > 0) {
+          const txtBlocks = m.content.filter(b => b.type === 'text');
+          const ocrText = await describeImages(imgBlocks);
+          const txt = txtBlocks.map(b => b.text).join('\n');
+          m.content = ocrText
+            ? `${txt}\n\n[历史图片文字]:\n${ocrText}`
+            : `${txt}\n[历史图片: ${imgBlocks.length}张]`;
+        }
+      }
+    }
   }
 
   const timeoutSignal = AbortSignal.timeout(60000);

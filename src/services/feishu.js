@@ -374,15 +374,142 @@ export async function replyToMessage(eventData, customReply) {
   }
 }
 
+// ─── 当前用户 ─────────────────────────────────────
+
+let _cachedMyInfo = null;
+
+/**
+ * 获取当前飞书用户信息（带缓存）
+ */
+export async function getMyUserInfo() {
+  if (_cachedMyInfo) return _cachedMyInfo;
+  try {
+    const user = await getUserInfo();
+    _cachedMyInfo = user?.user || user;
+    return _cachedMyInfo;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 获取当前用户的 open_id
+ */
+export async function getMyOpenId() {
+  const info = await getMyUserInfo();
+  return info?.open_id || '';
+}
+
+/**
+ * 清除用户缓存（重连时调用）
+ */
+export function clearMyUserInfo() {
+  _cachedMyInfo = null;
+}
+
+// ─── 权限自检 ─────────────────────────────────────
+
+const PERMISSION_CHECKS = [
+  { domain: 'im', label: '消息', test: { method: 'GET', path: '/im/v1/chats?page_size=1' } },
+  { domain: 'docx', label: '云文档', test: { method: 'GET', path: '/docx/v1/documents?page_size=1' } },
+  { domain: 'bitable', label: '多维表格', test: { method: 'GET', path: '/bitable/v1/apps?page_size=1' } },
+  { domain: 'contact', label: '通讯录', test: { method: 'GET', path: '/contact/v3/users?page_size=1' } },
+  { domain: 'calendar', label: '日历', test: { method: 'GET', path: '/calendar/v4/calendars' } },
+  { domain: 'task', label: '任务', test: { method: 'GET', path: '/task/v2/tasks?page_size=1' } },
+  { domain: 'approval', label: '审批', test: { method: 'GET', path: '/approval/v4/instances?page_size=1' } },
+  { domain: 'wiki', label: '知识库', test: { method: 'GET', path: '/wiki/v2/spaces?page_size=1' } },
+  { domain: 'mail', label: '邮件', test: { method: 'GET', path: '/mail/v1/user_mailboxes' } },
+  { domain: 'minutes', label: '妙记', test: { method: 'GET', path: '/minutes/v1/minutes/search?page_size=1' } },
+  { domain: 'mind_notes', label: '思维导图', test: { method: 'GET', path: '/mind_notes/v1/mind_notes?page_size=1' } },
+];
+
+/**
+ * 一次性检测所有飞书 API 权限
+ * @returns {Promise<{results: Array<{domain, label, ok, error}>}>}
+ */
+export async function checkPermissions() {
+  const results = await Promise.all(
+    PERMISSION_CHECKS.map(async ({ domain, label, test }) => {
+      try {
+        await feishuApi(test.method, test.path);
+        return { domain, label, ok: true };
+      } catch (e) {
+        return { domain, label, ok: false, error: e.message };
+      }
+    })
+  );
+  return { results, allOk: results.every(r => r.ok), okCount: results.filter(r => r.ok).length, total: results.length };
+}
+
+// ─── 互动卡片消息 ─────────────────────────────────────
+
+/**
+ * 发送飞书互动卡片消息
+ * @param {'open_id'|'chat_id'} receiveIdType
+ * @param {string} receiveId
+ * @param {object} cardJson 飞书卡片 JSON
+ */
+export async function sendCardMessage(receiveIdType, receiveId, cardJson) {
+  const content = JSON.stringify(cardJson);
+  // 不需要 double stringify，飞书卡片内容本身就是 string
+  const result = await feishuApi('POST', `/im/v1/messages?receive_id_type=${receiveIdType}`, {
+    receive_id: receiveId,
+    msg_type: 'interactive',
+    content,
+  });
+  return { success: true, messageId: result.data?.message_id, data: result.data };
+}
+
 // ─── 配置指引 ─────────────────────────────────────
 
 export function getSetupGuide() {
-  return `飞书连接设置指南
+  return `## 飞书连接配置指南
 
-获取凭证步骤：
-1. 浏览器打开 open.feishu.cn
-2. 飞书扫码登录 → 开发者后台
-3. 创建企业自建应用（名称填"CC助手"）
-4. 左侧菜单 → 凭证与基础信息 → 复制 App ID 和 App Secret
-5. 粘贴回 CC 配置面板 → 点击"测试连接"`;
+### 第一步：创建应用
+1. 浏览器打开 https://open.feishu.cn
+2. 飞书扫码登录 → 进入开发者后台
+3. 点击"创建企业自建应用" → 名称填"CC助手" → 确认
+
+### 第二步：获取凭证
+4. 左侧菜单 → "凭证与基础信息"
+5. 复制 App ID 和 App Secret
+6. 粘贴回 CC 配置面板 → 点击"测试连接"
+
+### 第三步：配置权限（关键！）
+连接成功后，CC 会自动检测权限状态。
+请在飞书开发者后台 "权限管理" 中搜索并开通以下权限：
+
+**消息与群聊：**
+- im:message（收发消息）
+- im:message:send_as_bot（以机器人身份发消息）
+- im:chat（获取群信息）
+- im:chat:readonly（读取群信息）
+
+**文档与知识：**
+- docx:document（云文档读写）
+- docx:document:create（创建云文档）
+- bitable:app（多维表格）
+- wiki:wiki（知识库）
+
+**通讯录与日历：**
+- contact:contact（通讯录）
+- contact:user（用户信息）
+- calendar:calendar（日历读写）
+
+**高级功能（按需开通）：**
+- approval:instance（审批实例）
+- task:task（任务读写）
+- mail:mail（邮件读写）
+- minutes:minute（妙记）
+- mind_notes:mind_note（思维导图）
+
+### 第四步：发布应用
+7. 左侧菜单 → "版本管理与发布"
+8. 点击"创建版本" → 输入版本号（如 1.0.0）→ 保存
+9. 点击"申请线上发布" → 等待管理员审批（通常是您自己）
+
+### 第五步：测试连接
+10. 回到 CC 配置面板，点击"连接"
+11. CC 会自动检测权限状态，显示绿色勾=可用，红色叉=需配置
+12. 连接成功后，飞书有人给您发消息，CC 就能收到`;
 }

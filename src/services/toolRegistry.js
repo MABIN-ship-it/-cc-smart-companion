@@ -8,6 +8,7 @@
 
 import { checkCommandSafety, checkFileSafety } from './safetyGuard';
 import { FEISHU_TOOLS, FEISHU_EXECUTORS } from './feishuTools';
+import { FEISHU_EXTENDED_TOOLS, FEISHU_EXTENDED_EXECUTORS } from './feishuToolsExtended';
 
 // ─── 工作区上下文（由 ChatInterface 同步）──────
 let _workspaceContext = null;
@@ -701,6 +702,12 @@ Action 5 — save：
   ...FEISHU_TOOLS.map(t => ({
     ...t,
     execute: FEISHU_EXECUTORS[t.name],
+  })),
+
+  // 飞书扩展工具（报告/方案/思维导图/审批/日历/任务/知识库/邮件/妙记/任务扫描）
+  ...FEISHU_EXTENDED_TOOLS.map(t => ({
+    ...t,
+    execute: FEISHU_EXTENDED_EXECUTORS[t.name],
   })),
 
 ];

@@ -29,6 +29,10 @@ export function addLesson(lesson) {
     approach: lesson.approach || '',
     result: lesson.result || '',
     isMistake: !!lesson.isMistake,
+    taskType: lesson.taskType || null,
+    originalOutput: lesson.originalOutput || null,
+    userEditedOutput: lesson.userEditedOutput || null,
+    executionTime: lesson.executionTime || null,
     createdAt: Date.now(),
   });
   save(lessons);
@@ -154,4 +158,71 @@ export function removeLesson(id) {
 /** 清空经验 */
 export function clearLessons() {
   save([]);
+}
+
+// ─── 任务执行偏好分析 ─────────────────────────────
+
+/**
+ * 提取任务执行相关的偏好模式
+ * @param {string} taskType 可选，限定任务类型
+ */
+export function getTaskPreferences(taskType) {
+  const all = load();
+  const relevant = taskType ? all.filter(l => l.taskType === taskType) : all.filter(l => l.taskType);
+
+  if (relevant.length === 0) return null;
+
+  const mistakes = relevant.filter(l => l.isMistake);
+  const successes = relevant.filter(l => !l.isMistake);
+
+  return {
+    taskType: taskType || 'all',
+    total: relevant.length,
+    mistakes: mistakes.length,
+    successes: successes.length,
+    recentMistakes: mistakes.slice(-5).map(l => ({ context: l.context, result: l.result })),
+    recentSuccesses: successes.slice(-5).map(l => ({ context: l.context, result: l.result })),
+  };
+}
+
+/**
+ * 获取不该做的事（失败模式）
+ */
+export function getFailedPatterns(taskType) {
+  const all = load();
+  const mistakes = taskType
+    ? all.filter(l => l.isMistake && l.taskType === taskType)
+    : all.filter(l => l.isMistake);
+
+  const patterns = {};
+  for (const m of mistakes) {
+    const key = m.result?.slice(0, 60) || m.context;
+    if (key) patterns[key] = (patterns[key] || 0) + 1;
+  }
+
+  return Object.entries(patterns)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([pattern, count]) => ({ pattern, count }));
+}
+
+/**
+ * 获取该继续做的事（成功模式）
+ */
+export function getSuccessPatterns(taskType) {
+  const all = load();
+  const successes = taskType
+    ? all.filter(l => !l.isMistake && l.taskType === taskType)
+    : all.filter(l => !l.isMistake);
+
+  const patterns = {};
+  for (const s of successes) {
+    const key = s.approach?.slice(0, 60) || s.context;
+    if (key) patterns[key] = (patterns[key] || 0) + 1;
+  }
+
+  return Object.entries(patterns)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([pattern, count]) => ({ pattern, count }));
 }
