@@ -1,7 +1,7 @@
 /**
  * 工具箱面板 — 管理集成应用
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApp } from '../store/AppContext';
 import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection, checkPermissions, getFeishuPermissionUrl, copyScopeToClipboard } from '../services/feishu';
 import { getBotConfig, saveBotConfig, getMonitorableChats, getBotStats } from '../services/feishuBotService';
@@ -45,6 +45,23 @@ export default function ToolboxPanel() {
 
   const feishuConnected = state.feishuStatus === 'connected';
   const feishuConnecting = state.feishuStatus === 'connecting';
+
+  const handleCheckPermissions = async () => {
+    setCheckingPerms(true);
+    try {
+      const result = await checkPermissions();
+      setPermResults(result);
+    } catch (e) {
+      setConfigMsg(`error||权限检测失败: ${e.message}`);
+    }
+    setCheckingPerms(false);
+  };
+
+  useEffect(() => {
+    if (feishuConnected && showFeishuConfig && !permResults) {
+      handleCheckPermissions();
+    }
+  }, [feishuConnected, showFeishuConfig]);
 
   const openFeishuCard = () => {
     const config = getFeishuConfig();
@@ -120,17 +137,6 @@ export default function ToolboxPanel() {
       setConfigMsg(`error||连接失败: ${e.message}`);
       setConnecting(false);
     }
-  };
-
-  const handleCheckPermissions = async () => {
-    setCheckingPerms(true);
-    try {
-      const result = await checkPermissions();
-      setPermResults(result);
-    } catch (e) {
-      setConfigMsg(`error||权限检测失败: ${e.message}`);
-    }
-    setCheckingPerms(false);
   };
 
   const handleDisconnect = async () => {
@@ -334,6 +340,7 @@ export default function ToolboxPanel() {
                             <>
                               <button
                                 className="feishu-perm-copy-btn"
+                                style={{marginLeft:'auto'}}
                                 onClick={async () => {
                                   const s = await copyScopeToClipboard(r.scope || r.domain);
                                   setConfigMsg(`info||已复制 ${s}，到权限页面搜索粘贴即可`);

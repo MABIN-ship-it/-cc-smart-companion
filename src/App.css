@@ -3123,6 +3123,33 @@ body {
 }
 .feishu-perm-check-btn:hover { background: var(--hover); }
 .feishu-perm-check-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.feishu-perm-copy-btn {
+  padding: 3px 10px;
+  border: 1px solid #3370FF;
+  border-radius: 4px;
+  background: rgba(51,112,255,0.08);
+  font-size: 11px;
+  cursor: pointer;
+  color: #3370FF;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+.feishu-perm-copy-btn:hover {
+  background: #3370FF;
+  color: #fff;
+}
+.feishu-perm-goto {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 3px 6px;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.feishu-perm-goto:hover {
+  color: #3370FF;
+  background: rgba(51,112,255,0.06);
+}
 .feishu-perm-list {
   display: flex;
   flex-wrap: wrap;
