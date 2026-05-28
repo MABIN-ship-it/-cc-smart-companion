@@ -9,8 +9,33 @@ import {
   createDocument, createBase, getMessageList, listBaseTables, searchBaseRecords,
   addBaseRecord, updateBaseRecord, getMyOpenId, setMyOpenId, checkPermissions,
 } from './feishu';
+import { getWorkspaceContext } from './toolRegistry';
 
 const FEISHU_BASE_URL = 'https://open.feishu.cn/open-apis';
+
+// ─── 路径解析 ─────────────────────────────────────
+
+/**
+ * 解析文件路径：绝对路径原样返回，相对路径拼接到工作区前面
+ */
+function resolveFilePath(filePath) {
+  if (!filePath) return filePath;
+  // 已是绝对路径（Windows 盘符或 Unix / 开头）
+  if (/^[a-zA-Z]:[/\\]/.test(filePath) || filePath.startsWith('/') || filePath.startsWith('\\\\')) {
+    return filePath.replace(/\\/g, '/');
+  }
+  // base64 data URI 透传
+  if (filePath.startsWith('data:image/')) {
+    return filePath;
+  }
+  // 相对路径 → 拼接工作区
+  const workspace = getWorkspaceContext();
+  if (workspace) {
+    const sep = workspace.endsWith('/') || workspace.endsWith('\\') ? '' : '/';
+    return (workspace.replace(/\\/g, '/') + sep + filePath).replace(/\\/g, '/');
+  }
+  return filePath.replace(/\\/g, '/');
+}
 
 /** 获取当前已保存的飞书配置 */
 function ensureConfig() {
@@ -330,11 +355,32 @@ export async function feishuCheckPermissions() {
 // ─── 工具：发送图片到飞书 ──────────────────────────
 
 export async function feishuSendImage(input) {
-  const { file_path, receive_id_type, receive_id } = input || {};
+  let { file_path, receive_id_type, receive_id } = input || {};
   if (!file_path) return '请提供图片文件路径(file_path)。';
+  file_path = resolveFilePath(file_path);
+
   try {
-    const uploadResult = await window.electronAPI?.feishuUploadImage?.(file_path);
-    if (!uploadResult?.success) return `图片上传失败: ${uploadResult?.error || '未知错误'}`;
+    if (!window.electronAPI) {
+      return '图片上传失败: Electron环境未就绪，请重启应用。';
+    }
+
+    let uploadResult;
+    if (file_path.startsWith('data:image/')) {
+      // 粘贴截图 → base64 → 主进程解码上传
+      uploadResult = await window.electronAPI.feuishuUploadImageBase64?.(file_path);
+    } else {
+      uploadResult = await window.electronAPI.feuishuUploadImage?.(file_path);
+    }
+
+    if (!uploadResult) {
+      return '图片上传失败: 上传接口不可用，请检查飞书是否已连接。';
+    }
+    if (!uploadResult.success) {
+      return `图片上传失败: ${uploadResult.error || '服务器返回错误，请检查飞书配置和网络。'}`;
+    }
+    if (!uploadResult.imageKey) {
+      return '图片上传失败: 上传成功但未获取到image_key，飞书接口返回异常。';
+    }
 
     const recvType = receive_id_type || 'open_id';
     const recvId = receive_id || await getMyOpenId();
@@ -343,20 +389,35 @@ export async function feishuSendImage(input) {
     const sendResult = await sendImageMessage(recvType, recvId, uploadResult.imageKey);
     return sendResult?.messageId
       ? `图片已发送到飞书，messageId: ${sendResult.messageId}`
-      : '图片发送失败';
+      : `图片上传成功(imageKey: ${uploadResult.imageKey})但发送消息失败，请检查飞书消息权限。`;
   } catch (e) {
-    return `发送图片失败: ${e.message}`;
+    return `发送图片异常: ${e.message || e}`;
   }
 }
 
 // ─── 工具：发送文件到飞书 ──────────────────────────
 
 export async function feishuSendFile(input) {
-  const { file_path, file_name, receive_id_type, receive_id } = input || {};
+  let { file_path, file_name, receive_id_type, receive_id } = input || {};
   if (!file_path) return '请提供文件路径(file_path)。';
+  file_path = resolveFilePath(file_path);
+
   try {
-    const uploadResult = await window.electronAPI?.feishuUploadFile?.(file_path, file_name || undefined);
-    if (!uploadResult?.success) return `文件上传失败: ${uploadResult?.error || '未知错误'}`;
+    if (!window.electronAPI) {
+      return '文件上传失败: Electron环境未就绪，请重启应用。';
+    }
+
+    const uploadResult = await window.electronAPI.feuishuUploadFile?.(file_path, file_name || undefined);
+
+    if (!uploadResult) {
+      return '文件上传失败: 上传接口不可用，请检查飞书是否已连接。';
+    }
+    if (!uploadResult.success) {
+      return `文件上传失败: ${uploadResult.error || '服务器返回错误(code=unknown)，请检查:\n1. 飞书配置是否正确\n2. 文件是否存在\n3. 网络连接是否正常'}`;
+    }
+    if (!uploadResult.fileKey) {
+      return '文件上传失败: 上传成功但未获取到file_key，可能飞书不支持此文件类型。';
+    }
 
     const recvType = receive_id_type || 'open_id';
     const recvId = receive_id || await getMyOpenId();
@@ -365,9 +426,9 @@ export async function feishuSendFile(input) {
     const sendResult = await sendFileMessage(recvType, recvId, uploadResult.fileKey, uploadResult.fileName || file_name);
     return sendResult?.messageId
       ? `文件已发送到飞书，messageId: ${sendResult.messageId}`
-      : '文件发送失败';
+      : `文件上传成功(fileKey: ${uploadResult.fileKey})但发送消息失败，请检查飞书消息权限。`;
   } catch (e) {
-    return `发送文件失败: ${e.message}`;
+    return `发送文件异常: ${e.message || e}`;
   }
 }
 
@@ -480,7 +541,7 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_send_image',
-    description: '上传本地图片并发送到飞书。用户说"把这个图片发到飞书"、"发这张图给我"时调用。需要先知道文件路径（通常在聊天对话的上下文中）。',
+    description: '上传图片并发送到飞书。用户说"把这个图片发到飞书"、"发这张图给我"时调用。支持：1)本地图片文件路径 2)data:image开头的base64数据URI 3)上下文中的截图临时文件路径。',
     input_schema: {
       type: 'object',
       properties: {

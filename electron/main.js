@@ -1195,14 +1195,21 @@ async function feishuGetToken() {
 }
 
 /**
+ * 封装文件 part，避免 Object.assign 污染 Buffer 的可枚举属性
+ */
+function prepareFilePart(buffer, filename, contentType) {
+  return { _isFile: true, buffer, filename, contentType };
+}
+
+/**
  * 构造 multipart/form-data 请求体
  */
 function buildMultipart(fields, boundary) {
   const parts = [];
   for (const [name, value] of Object.entries(fields)) {
-    if (Buffer.isBuffer(value)) {
+    if (value && value._isFile) {
       parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"; filename="${value.filename || 'file'}"\r\nContent-Type: ${value.contentType || 'application/octet-stream'}\r\n\r\n`));
-      parts.push(value);
+      parts.push(value.buffer);
       parts.push(Buffer.from('\r\n'));
     } else {
       parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
@@ -1220,6 +1227,7 @@ function feishuUpload(apiPath, fields) {
     feishuGetToken().then(token => {
       const boundary = '----CCFeishu' + Date.now();
       const body = buildMultipart(fields, boundary);
+      console.log(`[FeishuUpload] 上传到 ${apiPath}, body大小=${body.length} bytes`);
 
       const req = https.request({
         hostname: 'open.feishu.cn',
@@ -1235,8 +1243,10 @@ function feishuUpload(apiPath, fields) {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
+          console.log(`[FeishuUpload] 响应 HTTP ${res.statusCode}, body前200字符: ${data.substring(0, 200)}`);
           try {
             const json = JSON.parse(data);
+            console.log(`[FeishuUpload] code=${json.code}, msg=${json.msg}, hasData=${!!json.data}`);
             if (json.code === 0) {
               resolve({ success: true, data: json.data });
             } else {
@@ -1265,7 +1275,7 @@ ipcMain.handle('feishu:uploadImage', async (_event, filePath) => {
 
     const result = await feishuUpload('/open-apis/im/v1/images', {
       image_type: 'message',
-      image: Object.assign(fileBuffer, { filename: `image${ext}`, contentType }),
+      image: prepareFilePart(fileBuffer, `image${ext}`, contentType),
     });
 
     if (result.success && result.data?.image_key) {
@@ -1289,7 +1299,7 @@ ipcMain.handle('feishu:uploadFile', async (_event, filePath, fileName) => {
     const result = await feishuUpload('/open-apis/im/v1/files', {
       file_type: 'stream',
       file_name: name,
-      file: Object.assign(fileBuffer, { filename: name, contentType }),
+      file: prepareFilePart(fileBuffer, name, contentType),
     });
 
     if (result.success && result.data?.file_key) {
@@ -1297,6 +1307,36 @@ ipcMain.handle('feishu:uploadFile', async (_event, filePath, fileName) => {
     }
     return result;
   } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ====== 飞书 Base64 图片上传（粘贴截图专用）======
+
+ipcMain.handle('feishu:uploadImageBase64', async (_event, base64Data, mimeType) => {
+  try {
+    const match = base64Data.match(/^data:(image\/\w+);base64,(.+)$/);
+    const rawBase64 = match ? match[2] : base64Data;
+    const detectedMime = match ? match[1] : (mimeType || 'image/png');
+
+    const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/bmp': '.bmp' };
+    const ext = extMap[detectedMime] || '.png';
+
+    const fileBuffer = Buffer.from(rawBase64, 'base64');
+    console.log(`[FeishuUpload] Base64上传: mime=${detectedMime}, ext=${ext}, size=${fileBuffer.length} bytes`);
+
+    const result = await feishuUpload('/open-apis/im/v1/images', {
+      image_type: 'message',
+      image: prepareFilePart(fileBuffer, `image${ext}`, detectedMime),
+    });
+
+    if (result.success && result.data?.image_key) {
+      console.log(`[FeishuUpload] Base64上传成功: imageKey=${result.data.image_key}`);
+      return { success: true, imageKey: result.data.image_key };
+    }
+    return result;
+  } catch (e) {
+    console.error(`[FeishuUpload] Base64上传异常:`, e);
     return { success: false, error: e.message };
   }
 });

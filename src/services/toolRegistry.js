@@ -17,6 +17,10 @@ export function setWorkspaceContext(workspacePath) {
   _workspaceContext = workspacePath || null;
 }
 
+export function getWorkspaceContext() {
+  return _workspaceContext;
+}
+
 const TOOLS = [
   {
     name: 'web_search',

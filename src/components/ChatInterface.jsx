@@ -658,6 +658,28 @@ export default function ChatInterface() {
 
   processUserMessageRef.current = processUserMessage;
 
+  /**
+   * 将 base64 截图保存到临时目录，返回文件路径（供飞书发送工具使用）
+   */
+  const saveBase64ImageToTemp = useCallback(async (base64DataUri) => {
+    try {
+      const match = base64DataUri.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (!match) return null;
+      const rawBase64 = match[2];
+      const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' };
+      const ext = extMap[match[1]] || '.png';
+      const appPath = await window.electronAPI?.getAppPath?.();
+      const tmpDir = appPath ? `${appPath.replace(/\\/g, '/')}/temp/screenshots` : null;
+      if (!tmpDir) return null;
+      const fileName = `screenshot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+      const filePath = `${tmpDir}/${fileName}`;
+      const result = await window.electronAPI?.saveBase64ToFile?.(rawBase64, filePath);
+      return result?.success ? result.path : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text) return;
@@ -666,16 +688,39 @@ export default function ChatInterface() {
     const files = pendingFiles;
     setPendingImages([]);
     setPendingFiles([]);
+
+    // 文件加入知识库
     if (files.length > 0) {
       for (const f of files) {
         try { await addDocumentFromFile(f.path); } catch {}
       }
     }
-    const augmentedText = files.length > 0
-      ? `${text}\n\n[用户刚刚上传了以下文件到知识库：${files.map(f => f.name).join('、')}]`
-      : text;
+
+    // 截图保存到临时目录 → LLM 可拿到路径调用 feishu_send_image
+    const imageTempPaths = [];
+    if (imgs.length > 0) {
+      for (const img of imgs) {
+        const savedPath = await saveBase64ImageToTemp(img);
+        if (savedPath) imageTempPaths.push(savedPath);
+      }
+    }
+
+    // 构造上下文文本，**包含完整文件路径**供飞书发送工具使用
+    const contextParts = [];
+    if (files.length > 0) {
+      const fileList = files.map(f => `${f.name}（路径: ${f.path.replace(/\\/g, '/')}）`).join('、');
+      contextParts.push(`用户上传了以下文件到知识库：${fileList}`);
+    }
+    if (imageTempPaths.length > 0) {
+      const imgLines = imageTempPaths.map((p, i) => `截图${i + 1}: ${p}`).join('\n');
+      contextParts.push(`截图已保存到以下路径，可发送到飞书：\n${imgLines}`);
+    }
+
+    const contextText = contextParts.length > 0 ? `\n\n[${contextParts.join('；')}]` : '';
+    const augmentedText = `${text}${contextText}`;
+
     processUserMessage(augmentedText, { images: imgs.length > 0 ? imgs : undefined });
-  }, [input, pendingImages, pendingFiles, processUserMessage]);
+  }, [input, pendingImages, pendingFiles, processUserMessage, saveBase64ImageToTemp]);
 
   // 从计划面板点击"执行"后的自动发送
   const handlePlanExecute = useCallback((execMsg) => {
