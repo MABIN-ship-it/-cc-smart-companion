@@ -312,6 +312,32 @@ export async function batchAddBaseRecords(appToken, tableId, records) {
   return result.data;
 }
 
+// ─── 多维表格字段管理 ────────────────────────────
+
+/** 列出表的全部字段 */
+export async function listTableFields(appToken, tableId) {
+  const result = await feishuApi('GET', `/bitable/v1/apps/${appToken}/tables/${tableId}/fields`);
+  return result.data || { items: [] };
+}
+
+/** 批量添加字段 */
+export async function addTableFields(appToken, tableId, fields) {
+  const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/fields`, { fields });
+  return result.data;
+}
+
+/** 更新已有字段（名称/类型等） */
+export async function updateTableField(appToken, tableId, fieldId, updates) {
+  const result = await feishuApi('PUT', `/bitable/v1/apps/${appToken}/tables/${tableId}/fields/${fieldId}`, updates);
+  return result.data;
+}
+
+/** 删除字段 */
+export async function deleteTableField(appToken, tableId, fieldId) {
+  const result = await feishuApi('DELETE', `/bitable/v1/apps/${appToken}/tables/${tableId}/fields/${fieldId}`);
+  return result.data;
+}
+
 // ─── 事件回调 ─────────────────────────────────────
 
 export function onFeishuMessage(callback) {

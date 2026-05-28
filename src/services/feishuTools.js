@@ -7,7 +7,9 @@ import {
   getFeishuConfig, getTenantAccessToken, feishuApi,
   sendMessage, sendImageMessage, sendFileMessage, getChatList, getUserList, searchContacts,
   createDocument, createBase, getMessageList, listBaseTables, searchBaseRecords,
-  addBaseRecord, updateBaseRecord, getMyOpenId, setMyOpenId, checkPermissions,
+  addBaseRecord, updateBaseRecord, batchAddBaseRecords,
+  addTable, listTableFields, addTableFields,
+  getMyOpenId, setMyOpenId, checkPermissions,
 } from './feishu';
 import { getWorkspaceContext } from './toolRegistry';
 
@@ -186,6 +188,21 @@ export async function feishuCreateDoc(input) {
 
 // ─── 工具：操作多维表格 ───────────────────────────────
 
+/** 字段类型名 → 飞书数字类型 */
+const FIELD_TYPE_MAP = {
+  text: 1, number: 2, select: 3, multi_select: 4, date: 5,
+  checkbox: 7, attachment: 11, url: 13, rating: 18, currency: 22,
+  phone: 23, email: 24, location: 25, progress: 1001,
+  user: 10, created_time: 27, modified_time: 28, auto_number: 26,
+};
+
+function normalizeFields(rawFields) {
+  return (rawFields || []).map(f => ({
+    field_name: f.field_name || f.name || '',
+    type: typeof f.type === 'number' ? f.type : (FIELD_TYPE_MAP[f.type] || 1),
+  }));
+}
+
 export async function feishuBaseOperation(input) {
   const { operation, app_token, table_id, record } = input || {};
 
@@ -213,6 +230,46 @@ export async function feishuBaseOperation(input) {
     }
   }
 
+  if (operation === 'add_table') {
+    if (!app_token) return '请提供多维表格的 app_token';
+    const { table_name, fields } = input || {};
+    if (!table_name) return '请提供新表名称(table_name)';
+    try {
+      const normalized = normalizeFields(fields);
+      const result = await addTable(app_token, table_name, normalized);
+      const fieldNames = normalized.map(f => f.field_name).join(', ');
+      return `数据表"${table_name}"已创建，共 ${normalized.length} 个字段：${fieldNames}\ntable_id: ${result.table?.table_id || 'unknown'}`;
+    } catch (e) {
+      return `创建数据表失败: ${e.message}`;
+    }
+  }
+
+  if (operation === 'list_fields') {
+    if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+    try {
+      const result = await listTableFields(app_token, table_id);
+      const items = result?.items || [];
+      if (!items.length) return '该表暂无字段';
+      return `数据表字段（共${items.length}个）：\n${items.map(f => `- ${f.field_name}（ID: ${f.field_id}, 类型: ${f.type}）`).join('\n')}`;
+    } catch (e) {
+      return `获取字段列表失败: ${e.message}`;
+    }
+  }
+
+  if (operation === 'add_fields') {
+    if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+    const { fields } = input || {};
+    if (!fields?.length) return '请提供要添加的字段数组(fields)，每项含 field_name 和 type';
+    try {
+      const normalized = normalizeFields(fields);
+      await addTableFields(app_token, table_id, normalized);
+      const fieldNames = normalized.map(f => f.field_name).join(', ');
+      return `已添加 ${normalized.length} 个字段：${fieldNames}`;
+    } catch (e) {
+      return `添加字段失败: ${e.message}`;
+    }
+  }
+
   if (operation === 'search') {
     if (!app_token || !table_id) return '请提供 app_token 和 table_id';
     try {
@@ -227,17 +284,29 @@ export async function feishuBaseOperation(input) {
   }
 
   if (operation === 'add_record') {
-    if (!app_token || !table_id || !record) return '请提供 app_token、table_id 和 record(fields对象)';
+    if (!app_token || !table_id || !record) return '请提供 app_token、table_id 和 record(fields对象，字段名必须与表中已有字段一致)';
     try {
       const result = await addBaseRecord(app_token, table_id, record);
       return `记录已添加，record_id: ${result.record?.record_id || 'unknown'}`;
     } catch (e) {
-      return `添加记录失败: ${e.message}`;
+      return `添加记录失败: ${e.message}。提示：请先用 list_fields 确认表中已有字段名，record的字段名必须完全匹配。`;
+    }
+  }
+
+  if (operation === 'add_records') {
+    if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+    const { records } = input || {};
+    if (!records?.length) return '请提供 records 数组，每项为 { fields: {...} }';
+    try {
+      const result = await batchAddBaseRecords(app_token, table_id, records);
+      return `已批量添加 ${records.length} 条记录`;
+    } catch (e) {
+      return `批量添加失败: ${e.message}`;
     }
   }
 
   if (operation === 'update_record') {
-    if (!app_token || !table_id || !record?.record_id) return '请提供 app_token、table_id 和 record(含record_id)';
+    if (!app_token || !table_id || !record?.record_id) return '请提供 app_token、table_id 和 record(含record_id 和 fields)';
     try {
       await updateBaseRecord(app_token, table_id, record.record_id, record.fields || {});
       return '记录已更新';
@@ -246,7 +315,16 @@ export async function feishuBaseOperation(input) {
     }
   }
 
-  return '请指定操作类型(operation)：create_base / list_tables / search / add_record / update_record';
+  return `请指定操作类型(operation)：
+create_base — 创建多维表格
+add_table — 新建数据表（带自定义字段）
+list_tables — 查看所有数据表
+list_fields — 查看数据表字段
+add_fields — 为已有表添加字段
+search — 搜索记录
+add_record — 添加单条记录
+add_records — 批量添加记录
+update_record — 更新记录`;
 }
 
 // ─── 工具：搜索联系人 ───────────────────────────────
@@ -478,16 +556,19 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_base_operation',
-    description: '操作飞书多维表格：新建表格、查看表格列表、搜索记录、新增记录、更新记录。',
+    description: '操作飞书多维表格：新建表格、管理字段、搜索/添加/批量添加/更新记录。支持字段类型：text(文本)、number(数字)、select(单选)、date(日期)、checkbox(复选框)、url(链接)、email(邮箱)、phone(电话)、currency(货币)、progress(进度)、attachment(附件)、rating(评分)、user(用户)、location(位置)等。',
     input_schema: {
       type: 'object',
       properties: {
-        operation: { type: 'string', description: 'create_base/list_tables/search/add_record/update_record' },
-        name: { type: 'string', description: '新建多维表格时的名称（仅create_base需）' },
+        operation: { type: 'string', description: '操作类型：create_base(创建多维表格) / add_table(新建数据表+字段) / list_tables(查看表列表) / list_fields(查看字段) / add_fields(给已有表添加字段) / search(搜索记录) / add_record(添加单条记录) / add_records(批量添加记录) / update_record(更新记录)' },
+        name: { type: 'string', description: '新建多维表格时的名称（create_base时用）' },
+        table_name: { type: 'string', description: '新建数据表的名称（add_table时用）' },
         folder_token: { type: 'string', description: '新建时的文件夹token（可选）' },
         app_token: { type: 'string', description: '多维表格的app_token' },
         table_id: { type: 'string', description: '数据表的table_id' },
-        record: { type: 'object', description: '记录数据（新增/更新时）' },
+        fields: { type: 'array', items: { type: 'object' }, description: '字段数组，每项{ field_name: "字段名", type: "text/number/email等" }。add_table和add_fields时使用' },
+        record: { type: 'object', description: '单条记录的fields对象，字段名须与表中字段一致（add_record/update_record时用）' },
+        records: { type: 'array', items: { type: 'object' }, description: '批量记录数组，每项{ fields: {...} }（add_records时用）' },
       },
       required: ['operation'],
     },
