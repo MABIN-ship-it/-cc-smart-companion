@@ -723,6 +723,19 @@ export async function sendCardMessage(receiveIdType, receiveId, cardJson) {
   return { success: true, messageId: result.data?.message_id, data: result.data };
 }
 
+// ─── 文件导入为云文档 ─────────────────────────────────────
+
+export async function importFileToCloudDoc(filePath, targetType) {
+  if (!window.electronAPI?.feishuImportToCloudDoc) {
+    throw new Error('此功能需要 Electron 环境');
+  }
+  const result = await window.electronAPI.feishuImportToCloudDoc(filePath, targetType);
+  if (!result.success) {
+    throw new Error(result.error || '导入失败');
+  }
+  return result;
+}
+
 // ─── 配置指引 ─────────────────────────────────────
 
 export function getSetupGuide() {

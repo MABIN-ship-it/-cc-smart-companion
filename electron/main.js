@@ -1480,8 +1480,8 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
             const pyScript = `import sys
 try:
     import pandas as pd
-    df = pd.read_excel(r"${filePath.replace(/\\/g, '\\\\')}", sheet_name=None, engine='xlrd')
-    with pd.ExcelWriter(r"${xlsxPath.replace(/\\/g, '\\\\')}", engine='openpyxl') as w:
+    df = pd.read_excel(r"${filePath.replace(/\\/g, '/')}", sheet_name=None, engine='xlrd')
+    with pd.ExcelWriter(r"${xlsxPath.replace(/\\/g, '/')}", engine='openpyxl') as w:
         for name, sheet in df.items():
             sheet.to_excel(w, sheet_name=name, index=False)
     print('OK')
@@ -1513,6 +1513,120 @@ except Exception as e:
     }
 
     return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ====== 飞书文件导入为云文档 ======
+ipcMain.handle('feishu:importToCloudDoc', async (_event, filePath, targetType) => {
+  try {
+    if (!fs.existsSync(filePath)) return { success: false, error: `文件不存在: ${filePath}` };
+
+    const fileBuffer = fs.readFileSync(filePath);
+    const fileName = path.basename(filePath);
+    const ext = path.extname(fileName).toLowerCase();
+    const fileSize = fileBuffer.length;
+
+    // 映射导入目标类型
+    const typeMap = {
+      '.xls': 'sheet', '.xlsx': 'sheet', '.xlsm': 'sheet', '.csv': 'sheet',
+      '.docx': 'docx', '.doc': 'docx',
+    };
+    const importType = targetType || typeMap[ext] || 'docx';
+
+    console.log(`[ImportTask] 上传到云盘: ${fileName}, 大小=${fileSize}, 目标类型=${importType}`);
+
+    // 1. 上传到飞书云盘获取 file_token
+    const uploadResult = await feishuUpload('/open-apis/drive/v1/files/upload_all', {
+      file_name: fileName,
+      parent_type: 'explorer',
+      size: String(fileSize),
+      file: prepareFilePart(fileBuffer, fileName),
+    });
+
+    if (!uploadResult.success || !uploadResult.data?.file_token) {
+      return { success: false, error: `上传云盘失败: ${uploadResult.error || '未获取到file_token'}` };
+    }
+
+    const fileToken = uploadResult.data.file_token;
+    console.log(`[ImportTask] 上传成功, file_token=${fileToken}`);
+
+    // 2. 创建导入任务
+    const importResult = await new Promise((resolve) => {
+      feishuGetToken().then(token => {
+        const body = JSON.stringify({
+          file_extension: ext.replace('.', ''),
+          file_name: fileName,
+          file_token: fileToken,
+          type: importType,
+        });
+        const req = https.request({
+          hostname: 'open.feishu.cn',
+          path: '/open-apis/drive/v1/import_tasks',
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': Buffer.byteLength(body),
+          },
+          timeout: 30000,
+        }, (res) => {
+          let data = '';
+          res.on('data', chunk => data += chunk);
+          res.on('end', () => {
+            try { resolve(JSON.parse(data)); }
+            catch (e) { resolve({ code: -1, msg: e.message }); }
+          });
+        });
+        req.on('error', (e) => resolve({ code: -1, msg: e.message }));
+        req.write(body);
+        req.end();
+      }).catch(e => resolve({ code: -1, msg: e.message }));
+    });
+
+    if (importResult.code !== 0) {
+      return { success: false, error: `导入任务创建失败(${importResult.code}): ${importResult.msg}` };
+    }
+
+    const ticket = importResult.data?.ticket;
+    if (!ticket) return { success: false, error: '未获取到ticket' };
+
+    console.log(`[ImportTask] 导入任务已创建, ticket=${ticket}`);
+
+    // 3. 轮询导入结果 (最多等 30 秒)
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const pollResult = await new Promise((resolve) => {
+        feishuGetToken().then(token => {
+          https.get({
+            hostname: 'open.feishu.cn',
+            path: `/open-apis/drive/v1/import_tasks/${ticket}`,
+            headers: { 'Authorization': `Bearer ${token}` },
+            timeout: 10000,
+          }, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              try { resolve(JSON.parse(data)); }
+              catch (e) { resolve({ code: -1, msg: e.message }); }
+            });
+          }).on('error', (e) => resolve({ code: -1, msg: e.message }));
+        }).catch(e => resolve({ code: -1, msg: e.message }));
+      });
+
+      if (pollResult.code === 0 && pollResult.data?.job_status === 0) {
+        const result = pollResult.data.result || {};
+        const docUrl = result.url || `https://bytedance.feishu.cn/${importType}/${result.token || ''}`;
+        console.log(`[ImportTask] 导入完成: ${docUrl}`);
+        return { success: true, url: docUrl, token: result.token, type: importType, fileName };
+      }
+      if (pollResult.data?.job_status === 2) {
+        return { success: false, error: `导入失败: ${pollResult.data.message || '未知错误'}` };
+      }
+    }
+
+    return { success: false, error: '导入超时，请稍后在飞书云盘中查看' };
   } catch (e) {
     return { success: false, error: e.message };
   }

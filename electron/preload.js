@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   feishuUploadFile: (filePath, fileName) => ipcRenderer.invoke('feishu:uploadFile', filePath, fileName),
   feishuSaveConfigFile: (appId, appSecret) => ipcRenderer.invoke('feishu:saveConfigFile', appId, appSecret),
   feishuDownloadResource: (messageId, fileKey, type, fileName) => ipcRenderer.invoke('feishu:downloadResource', messageId, fileKey, type, fileName),
+  feishuImportToCloudDoc: (filePath, targetType) => ipcRenderer.invoke('feishu:importToCloudDoc', filePath, targetType),
   onFeishuMessage: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('feishu:message', handler);

@@ -565,6 +565,23 @@ export async function feishuDownloadResource(input) {
   }
 }
 
+// ─── 导入文件为云文档 ─────────────────────────────────────
+
+export async function feishuImportToCloudDoc(input) {
+  const { file_path, target_type } = input || {};
+  if (!file_path) return '请提供文件路径 file_path（从之前 feishu_download_resource 的返回结果中获取）。';
+
+  try {
+    const result = await window.electronAPI.feishuImportToCloudDoc(file_path, target_type || null);
+    if (!result?.success) return `导入失败: ${result?.error || '未知错误'}`;
+
+    const typeName = result.type === 'sheet' ? '电子表格' : result.type === 'docx' ? '文档' : result.type;
+    return `文件「${result.fileName}」已成功导入为飞书${typeName}！\n链接: ${result.url}`;
+  } catch (e) {
+    return `导入文件异常: ${e.message || e}`;
+  }
+}
+
 // ─── 工具定义 ─────────────────────────────────────
 
 export const FEISHU_TOOLS = [
@@ -727,6 +744,18 @@ export const FEISHU_TOOLS = [
       required: ['message_id', 'file_key'],
     },
   },
+  {
+    name: 'feishu_import_to_cloud_doc',
+    description: '将已下载到本地的文件导入为飞书云文档（如将.xls/.xlsx导入为飞书电子表格，将.docx导入为飞书文档）。当用户要求"转为云文档"、"导入飞书"、"转换为在线文档"时调用。需要先通过feishu_download_resource下载文件，然后将返回的filePath传给此工具。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: '已下载文件的本地路径（从feishu_download_resource返回的filePath获取）' },
+        target_type: { type: 'string', description: '目标云文档类型：sheet(电子表格) 或 docx(文档)。不填则根据文件扩展名自动判断。' },
+      },
+      required: ['file_path'],
+    },
+  },
 ];
 
 export const FEISHU_EXECUTORS = {
@@ -743,4 +772,5 @@ export const FEISHU_EXECUTORS = {
   feishu_send_file: feishuSendFile,
   feishu_read_document: feishuReadDocument,
   feishu_download_resource: feishuDownloadResource,
+  feishu_import_to_cloud_doc: feishuImportToCloudDoc,
 };
