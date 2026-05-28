@@ -242,7 +242,7 @@ export async function createDocument(title, content) {
   return {
     success: true,
     documentId,
-    url: createResult.data?.document?.url || `https://bytedance.feishu.cn/docx/${documentId}`,
+    url: `https://bytedance.feishu.cn/docx/${documentId}`,
     title,
   };
 }
