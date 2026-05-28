@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection, checkPermissions } from '../services/feishu';
+import { getBotConfig, saveBotConfig, getMonitorableChats, getBotStats } from '../services/feishuBotService';
 
 /* 飞书品牌风格图标 — 蓝色圆角方底+白色抽象对话图形 */
 function FeishuIcon({ size = 40 }) {
@@ -39,6 +40,8 @@ export default function ToolboxPanel() {
   const [showGuide, setShowGuide] = useState(false);
   const [permResults, setPermResults] = useState(null);
   const [checkingPerms, setCheckingPerms] = useState(false);
+  const [botConfig, setBotConfig] = useState(getBotConfig());
+  const [showBotConfig, setShowBotConfig] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
   const feishuConnecting = state.feishuStatus === 'connecting';
@@ -135,6 +138,22 @@ export default function ToolboxPanel() {
     dispatch({ type: 'SET_FEISHU_STATUS', payload: 'disconnected' });
     setConfigMsg('info||已断开连接');
     setPermResults(null);
+    setShowBotConfig(false);
+  };
+
+  const handleToggleBot = () => {
+    const updated = saveBotConfig({ enabled: !botConfig.enabled });
+    setBotConfig(updated);
+  };
+
+  const handleToggleAutoReply = () => {
+    const updated = saveBotConfig({ autoReply: !botConfig.autoReply });
+    setBotConfig(updated);
+  };
+
+  const handleBotStyleChange = (style) => {
+    const updated = saveBotConfig({ replyStyle: style });
+    setBotConfig(updated);
   };
 
   return (
@@ -312,6 +331,39 @@ export default function ToolboxPanel() {
                     </div>
                   ) : (
                     <div className="feishu-perm-hint">点击"重新检测"查看权限状态</div>
+                  )}
+                </div>
+              )}
+
+              {/* Bot 配置（连接后显示） */}
+              {feishuConnected && (
+                <div className="feishu-bot-section">
+                  <div className="feishu-bot-header" onClick={() => setShowBotConfig(!showBotConfig)}>
+                    <span>🤖 CC Bot 自动回复</span>
+                    <span className="feishu-bot-toggle">{showBotConfig ? '▲' : '▼'}</span>
+                  </div>
+                  {showBotConfig && (
+                    <div className="feishu-bot-body">
+                      <label className="feishu-bot-row">
+                        <span>启用 Bot</span>
+                        <input type="checkbox" checked={botConfig.enabled} onChange={handleToggleBot} />
+                      </label>
+                      <label className="feishu-bot-row">
+                        <span>AI 自动回复</span>
+                        <input type="checkbox" checked={botConfig.autoReply} onChange={handleToggleAutoReply} />
+                      </label>
+                      <div className="feishu-bot-row">
+                        <span>回复风格</span>
+                        <select value={botConfig.replyStyle} onChange={(e) => handleBotStyleChange(e.target.value)}>
+                          <option value="friendly">友好亲切</option>
+                          <option value="professional">专业正式</option>
+                          <option value="concise">简洁高效</option>
+                        </select>
+                      </div>
+                      <div className="feishu-bot-info">
+                        CC Bot 在飞书中以你的身份自动回复消息。有人私聊或在群里 @你 时，Bot 会用 AI 智能回复。
+                      </div>
+                    </div>
                   )}
                 </div>
               )}

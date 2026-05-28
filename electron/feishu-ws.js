@@ -1,6 +1,13 @@
 /**
  * 飞书 WebSocket 长连接客户端
  * 使用 @larksuiteoapi/node-sdk WSClient 接收飞书事件
+ *
+ * 支持事件类型：
+ *   im.message.receive_v1  — 接收消息（私聊+群聊）
+ *   im.message.read_v1     — 消息已读
+ *   im.chat.member.user.deleted_v1 — 用户退群
+ *   im.chat.disbanded_v1   — 群解散
+ *   application.bot.menu_v6 — Bot 菜单事件
  */
 const { WSClient, EventDispatcher } = require('@larksuiteoapi/node-sdk');
 
@@ -47,6 +54,12 @@ function start(appId, appSecret, onMessage, onStatus) {
         diag('data keys: ' + JSON.stringify(Object.keys(data || {})));
         diag('data.message: ' + JSON.stringify(data?.message).slice(0, 300));
         diag('data.sender: ' + JSON.stringify(data?.sender).slice(0, 200));
+
+        // 提取消息文本用于日志
+        const msgType = data?.message?.message_type || 'unknown';
+        const chatType = data?.message?.chat_type || 'unknown';
+        diag(`消息类型: ${msgType}, 会话类型: ${chatType}`);
+
         if (messageHandler) {
           try {
             messageHandler(data);
@@ -56,6 +69,46 @@ function start(appId, appSecret, onMessage, onStatus) {
           }
         } else {
           diag('>>> 错误: messageHandler为空');
+        }
+      },
+
+      // Bot 被拉入群聊
+      'im.chat.member.bot.added_v1': (data) => {
+        diag('>>> Bot 被加入群聊: ' + JSON.stringify(data).slice(0, 300));
+        if (messageHandler) {
+          try {
+            messageHandler({ type: 'bot_added_to_chat', data });
+          } catch {}
+        }
+      },
+
+      // Bot 被移出群聊
+      'im.chat.member.bot.deleted_v1': (data) => {
+        diag('>>> Bot 被移出群聊: ' + JSON.stringify(data).slice(0, 300));
+        if (messageHandler) {
+          try {
+            messageHandler({ type: 'bot_removed_from_chat', data });
+          } catch {}
+        }
+      },
+
+      // 群解散
+      'im.chat.disbanded_v1': (data) => {
+        diag('>>> 群已解散: ' + JSON.stringify(data).slice(0, 300));
+        if (messageHandler) {
+          try {
+            messageHandler({ type: 'chat_disbanded', data });
+          } catch {}
+        }
+      },
+
+      // 消息已读回执
+      'im.message.read_v1': (data) => {
+        diag('>>> 消息已读: ' + JSON.stringify(data).slice(0, 300));
+        if (messageHandler) {
+          try {
+            messageHandler({ type: 'message_read', data });
+          } catch {}
         }
       },
     });

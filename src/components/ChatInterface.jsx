@@ -8,6 +8,7 @@ import { addFavorite, addFeedback, addReport } from '../services/interactions';
 import { isSpeechSupported, isMediaRecorderSupported, startListening, speakText, stopListening, startVoiceRecording, stopVoiceRecording, cancelVoiceRecording, transcribeAudio } from '../services/speech';
 import { startProactiveEngine } from '../services/proactive';
 import { startScheduledScan, stopScheduledScan, detectTaskFromMessage } from '../services/feishuMonitor';
+import { handleIncomingMessage, getBotConfig } from '../services/feishuBotService';
 import FeishuTaskPanel from './FeishuTaskPanel';
 import { dispatchFeishuMessage, extractTextFromEvent, extractSenderOpenId, sendWelcomeMessage, replyToMessage, sendMessage as feishuSendMessage, isFeishuConfigured, getFeishuConfig } from '../services/feishu';
 import { createExpressionEngine } from '../services/expressionEngine';
@@ -334,6 +335,9 @@ export default function ChatInterface() {
     if (window.electronAPI?.onFeishuMessage) {
       unsubFeishuMsg = window.electronAPI.onFeishuMessage((data) => {
         dispatchFeishuMessage(data);
+
+        // Bot 自动回复（私聊+群聊@CC）
+        handleIncomingMessage(data).catch(() => {});
 
         const text = extractTextFromEvent(data);
         if (!text) return;
