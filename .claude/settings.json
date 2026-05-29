@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Edit(*)",
+      "Write(*)",
+      "MultiEdit(*)",
+      "Read(*)",
+      "Bash(npm test)",
+      "Bash(npm run build)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push)",
+      "Bash(rm -rf *)",
+      "Bash(cp -r *)"
+    ],
+    "ask": []
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "D:/cc安装包/汇总/CC-App/**",
+        "D:/cc安装包/1/**"
+      ]
+    }
+  }
+}
