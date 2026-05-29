@@ -1110,20 +1110,72 @@ ipcMain.handle('feishu:test', async (_event, appId, appSecret) => {
   });
 });
 
+// ====== 飞书会话持久化 ======
+
+const FEISHU_SESSION_PATH = path.join(app.getPath('userData'), 'cc_feishu_session.json');
+const SESSION_EXPIRE_DAYS = 7;
+
+function generateSessionId() {
+  return 'fs_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function loadFeishuSession() {
+  try {
+    if (fs.existsSync(FEISHU_SESSION_PATH)) {
+      const raw = fs.readFileSync(FEISHU_SESSION_PATH, 'utf-8');
+      const session = JSON.parse(raw);
+      if (session.createdAt && (Date.now() - session.createdAt) > SESSION_EXPIRE_DAYS * 86400000) {
+        return null;
+      }
+      return session;
+    }
+  } catch {}
+  return null;
+}
+
+function saveFeishuSession(sessionId, context) {
+  try {
+    fs.writeFileSync(FEISHU_SESSION_PATH, JSON.stringify({
+      sessionId,
+      context,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }), 'utf-8');
+  } catch {}
+}
+
+function refreshFeishuSession() {
+  try {
+    const session = loadFeishuSession();
+    if (session) {
+      session.updatedAt = Date.now();
+      fs.writeFileSync(FEISHU_SESSION_PATH, JSON.stringify(session), 'utf-8');
+    }
+  } catch {}
+}
+
+// ====== Feishu WebSocket 连接配置 ======
+
 ipcMain.handle('feishu:configure', async (_event, appId, appSecret) => {
   try {
+    const existingSession = loadFeishuSession();
+    const sessionId = existingSession?.sessionId || generateSessionId();
+
     const result = feishuWs.start(appId, appSecret, (data) => {
-      // 接收到飞书消息事件，转发到渲染进程
+      data._feishuSessionId = sessionId;
+      refreshFeishuSession();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('feishu:message', data);
       }
     }, (status) => {
-      // 推送WS状态变更到渲染进程
+      status._feishuSessionId = sessionId;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('feishu:statusChange', status);
       }
-    });
-    return result;
+    }, { sessionId });
+
+    saveFeishuSession(sessionId, { appId });
+    return { ...result, sessionId };
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -1135,6 +1187,16 @@ ipcMain.handle('feishu:status', () => {
 
 ipcMain.handle('feishu:disconnect', () => {
   return feishuWs.stop();
+});
+
+ipcMain.handle('feishu:getSession', async () => {
+  const session = loadFeishuSession();
+  return session || { sessionId: null };
+});
+
+ipcMain.handle('feishu:refreshSession', async () => {
+  refreshFeishuSession();
+  return { success: true };
 });
 
 // ====== Feishu 文件上传 ======

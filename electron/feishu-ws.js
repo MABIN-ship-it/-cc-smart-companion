@@ -17,6 +17,8 @@ let statusCallback = null;
 let isRunning = false;
 let diagnosticLog = [];
 const MAX_DIAG_LOG = 100;
+let currentSessionId = null;
+let lastReceiveContext = null;
 
 function diag(msg) {
   const entry = `[${new Date().toISOString().slice(11, 19)}] ${msg}`;
@@ -34,11 +36,13 @@ const customLogger = {
   trace: (...args) => { console.debug('[SDK:trace]', ...args); diag('[SDK:trace] ' + args.join(' ')); },
 };
 
-function start(appId, appSecret, onMessage, onStatus) {
+function start(appId, appSecret, onMessage, onStatus, options = {}) {
   stop();
   messageHandler = onMessage;
   statusCallback = onStatus || null;
-  diag(`启动连接, appId=${appId.slice(0, 8)}...`);
+  currentSessionId = options.sessionId || null;
+  lastReceiveContext = options.receiveContext || null;
+  diag(`启动连接, appId=${appId.slice(0, 8)}..., sessionId=${currentSessionId || '(新会话)'}`);
 
   try {
     wsClient = new WSClient({
@@ -131,8 +135,8 @@ function start(appId, appSecret, onMessage, onStatus) {
 
     wsClient.onReconnected = () => {
       isRunning = true;
-      diag('重连成功');
-      if (statusCallback) statusCallback({ running: true, event: 'reconnected' });
+      diag(`重连成功, sessionId=${currentSessionId}`);
+      if (statusCallback) statusCallback({ running: true, event: 'reconnected', sessionId: currentSessionId });
     };
 
     wsClient.start({ eventDispatcher: dispatcher });
@@ -166,4 +170,9 @@ function getDiagnosticLog() {
   return diagnosticLog;
 }
 
-module.exports = { start, stop, getStatus, getDiagnosticLog };
+function setSessionContext(sessionId, context) {
+  currentSessionId = sessionId;
+  lastReceiveContext = context;
+}
+
+module.exports = { start, stop, getStatus, getDiagnosticLog, setSessionContext };
