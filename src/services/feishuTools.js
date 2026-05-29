@@ -197,12 +197,71 @@ export async function feishuCreateDoc(input) {
 
 // ─── 工具：操作多维表格 ───────────────────────────────
 
-/** 字段类型名 → 飞书数字类型 */
+/** 字段类型名 → 飞书数字类型（完整映射） */
 const FIELD_TYPE_MAP = {
-  text: 1, number: 2, select: 3, multi_select: 4, date: 5,
-  checkbox: 7, attachment: 11, url: 13, rating: 18, currency: 22,
-  phone: 23, email: 24, location: 25, progress: 1001,
-  user: 10, created_time: 27, modified_time: 28, auto_number: 26,
+  // 基础类型
+  text: 1,            // 多行文本
+  number: 2,          // 数字
+  single_select: 3,   // 单选
+  select: 3,          // 单选（别名）
+  multi_select: 4,    // 多选
+  datetime: 5,        // 日期时间
+  date: 5,            // 日期（别名）
+  checkbox: 7,        // 复选框
+  // 人员与群组
+  user: 10,           // 人员
+  group_chat: 30,     // 群聊
+  created_user: 31,   // 创建人
+  modified_user: 32,  // 修改人
+  // 富媒体
+  attachment: 11,     // 附件
+  image: 12,          // 图片
+  // 链接与关联
+  url: 13,            // 链接
+  link: 15,           // 单向关联
+  duplex_link: 14,    // 双向关联
+  // 高级字段
+  rating: 18,         // 评分
+  formula: 20,        // 公式
+  lookup: 21,         // 查找引用
+  currency: 22,       // 货币
+  phone: 23,          // 电话号码
+  email: 24,          // 邮箱
+  location: 25,       // 地理位置
+  barcode: 29,        // 条码
+  // 自动字段
+  auto_number: 26,    // 自动编号
+  created_time: 27,   // 创建时间
+  modified_time: 28,  // 修改时间
+  // 其他
+  progress: 1001,     // 进度
+  percent: 1001,      // 百分比（别名）
+};
+
+/** 反向映射: 数字类型 → 类型名 */
+const FIELD_TYPE_REVERSE = Object.fromEntries(
+  Object.entries(FIELD_TYPE_MAP).map(([name, code]) => [code, name])
+);
+
+/** 类型到示例值的映射（用于提示） */
+const FIELD_TYPE_EXAMPLES = {
+  text: '示例文本',
+  number: 123,
+  select: '选项A',
+  multi_select: '选项A,选项B',
+  date: '2026-01-01',
+  checkbox: true,
+  attachment: 'file_token_xxx',
+  image: 'img_xxx',
+  url: 'https://example.com',
+  rating: 5,
+  currency: 100.00,
+  phone: '13800138000',
+  email: 'user@example.com',
+  location: '上海市浦东新区',
+  progress: 50,
+  auto_number: 1,
+  barcode: '6901234567890',
 };
 
 function normalizeFields(rawFields) {
@@ -210,6 +269,78 @@ function normalizeFields(rawFields) {
     field_name: f.field_name || f.name || '',
     type: typeof f.type === 'number' ? f.type : (FIELD_TYPE_MAP[f.type] || 1),
   }));
+}
+
+/**
+ * 根据样本值自动推断字段类型
+ * @param {string} fieldName 字段名
+ * @param {Array} sampleValues 样本值数组
+ * @returns {string} 推断的类型名
+ */
+export function inferFieldType(fieldName, sampleValues) {
+  const values = sampleValues.filter(v => v !== null && v !== undefined && v !== '');
+  if (values.length === 0) return 'text';
+
+  const nameLower = (fieldName || '').toLowerCase();
+
+  // 名称启发式 → 中文关键词
+  if (/电话|phone|手机|tel|mobile|座机/i.test(nameLower)) return 'phone';
+  if (/邮箱|email|邮件|mail/i.test(nameLower)) return 'email';
+  if (/链接|url|网址|link/i.test(nameLower)) return 'url';
+  if (/日期|时间|date|time|日/i.test(nameLower)) return 'date';
+  if (/金额|价格|费用|金额|price|amount|cost|money/i.test(nameLower)) return 'currency';
+  if (/进度|完成|progress|百分比|percent/i.test(nameLower)) return 'progress';
+  if (/评分|rating|star|星级/i.test(nameLower)) return 'rating';
+  if (/位置|地址|location|addr/i.test(nameLower)) return 'location';
+  if (/负责人|创建人|修改人|owner|creator|updater|user/i.test(nameLower)) return 'user';
+  if (/选项|状态|select|status/i.test(nameLower)) return 'select';
+  if (/多选|标签|tags|multi/i.test(nameLower)) return 'multi_select';
+  if (/图片|image|photo|照片|头像|avatar/i.test(nameLower)) return 'image';
+  if (/附件|attachment|文件|file|文档/i.test(nameLower)) return 'attachment';
+  if (/编号|number|id|序号|auto/i.test(nameLower)) return 'number';
+
+  // 值启发式
+  const allNumbers = values.every(v => !isNaN(Number(v)) && v !== '' && typeof v !== 'boolean');
+  if (allNumbers) {
+    const nums = values.map(v => Number(v));
+    // 全是0-100的整数，可能是进度
+    if (nums.every(n => Number.isInteger(n) && n >= 0 && n <= 100)) return 'number';
+    // 小数点可能是货币
+    if (nums.some(n => !Number.isInteger(n))) return 'number';
+    return 'number';
+  }
+
+  // 日期格式检测
+  if (values.some(v => String(v).match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/))) return 'date';
+  if (values.some(v => String(v).match(/\d{1,2}[-/]\d{1,2}[-/]\d{4}/))) return 'date';
+
+  // URL检测
+  if (values.some(v => String(v).match(/^https?:\/\//))) return 'url';
+
+  // 邮箱检测
+  if (values.some(v => String(v).match(/^[\w.-]+@[\w.-]+\.\w+$/))) return 'email';
+
+  // 手机号检测
+  if (values.some(v => String(v).match(/^1[3-9]\d{9}$/))) return 'phone';
+
+  // 布尔检测
+  const truthy = ['是', '否', 'true', 'false', 'yes', 'no'];
+  const uniqueLower = [...new Set(values.map(v => String(v).toLowerCase().trim()))];
+  if (uniqueLower.length <= 3 && uniqueLower.every(v => truthy.includes(v) || v === '1' || v === '0')) return 'checkbox';
+
+  return 'text';
+}
+
+/** 获取所有支持的字段类型列表 */
+export function getSupportedFieldTypes() {
+  return Object.entries(FIELD_TYPE_MAP).map(([name, code]) => ({
+    name, code, example: FIELD_TYPE_EXAMPLES[name] || '',
+  }));
+}
+
+/** 验证字段类型值是否合法 */
+export function isValidFieldType(type) {
+  return FIELD_TYPE_MAP[type] !== undefined || Object.values(FIELD_TYPE_MAP).includes(type);
 }
 
 export async function feishuBaseOperation(input) {
