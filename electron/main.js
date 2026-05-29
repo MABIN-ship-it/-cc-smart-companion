@@ -1146,24 +1146,10 @@ function loadFeishuSession() {
   return null;
 }
 
-function saveFeishuSession(sessionId, context) {
+async function saveFeishuSession(sessionId, context) {
   try {
-    fs.writeFileSync(FEISHU_SESSION_PATH, JSON.stringify({
-      sessionId,
-      context,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }), 'utf-8');
-  } catch {}
-}
-
-function refreshFeishuSession() {
-  try {
-    const session = loadFeishuSession();
-    if (session) {
-      session.updatedAt = Date.now();
-      fs.writeFileSync(FEISHU_SESSION_PATH, JSON.stringify(session), 'utf-8');
-    }
+    const data = JSON.stringify({ sessionId, context, createdAt: Date.now(), updatedAt: Date.now() });
+    await fs.promises.writeFile(FEISHU_SESSION_PATH, data, 'utf-8');
   } catch {}
 }
 
@@ -1171,24 +1157,40 @@ function refreshFeishuSession() {
 
 ipcMain.handle('feishu:configure', async (_event, appId, appSecret) => {
   try {
-    const existingSession = loadFeishuSession();
-    const sessionId = existingSession?.sessionId || generateSessionId();
-
+    // 先建立 WebSocket 连接（会话管理不阻塞主流程）
     const result = feishuWs.start(appId, appSecret, (data) => {
-      data._feishuSessionId = sessionId;
-      refreshFeishuSession();
+      // 消息回调：第一时间转发，会话管理异步处理
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('feishu:message', data);
       }
+      // 会话持久化放最后，不阻塞消息
+      try {
+        const session = loadFeishuSession();
+        if (session) {
+          data._feishuSessionId = session.sessionId;
+          session.updatedAt = Date.now();
+          fs.writeFile(FEISHU_SESSION_PATH, JSON.stringify(session), 'utf-8', () => {});
+        }
+      } catch {}
     }, (status) => {
-      status._feishuSessionId = sessionId;
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('feishu:statusChange', status);
       }
-    }, { sessionId });
+    });
 
-    saveFeishuSession(sessionId, { appId });
-    return { ...result, sessionId };
+    // 会话初始化（WebSocket 已连接后再处理）
+    try {
+      const existingSession = loadFeishuSession();
+      const sessionId = existingSession?.sessionId || generateSessionId();
+      if (!existingSession) {
+        fs.writeFile(FEISHU_SESSION_PATH, JSON.stringify({
+          sessionId, context: { appId }, createdAt: Date.now(), updatedAt: Date.now(),
+        }), 'utf-8', () => {});
+      }
+      result.sessionId = sessionId;
+    } catch {}
+
+    return result;
   } catch (e) {
     return { success: false, error: e.message };
   }
