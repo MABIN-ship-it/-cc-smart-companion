@@ -393,21 +393,69 @@ export async function updateBaseRecord(appToken, tableId, recordId, fields) {
 }
 
 export async function batchAddBaseRecords(appToken, tableId, records) {
-  const BATCH_SIZE = 500; // 飞书限制 500 条/次
+  const BATCH_SIZE = 500;
+  const MAX_RETRIES = 2;
+  const RETRY_DELAY_MS = 1000;
+
+  // 预处理：验证 records 结构，过滤空值
+  const validated = records.map((record, idx) => {
+    if (!record.fields || typeof record.fields !== 'object') {
+      throw new Error(`第${idx + 1}条记录缺少有效的 fields 对象`);
+    }
+    const cleanFields = {};
+    for (const [key, value] of Object.entries(record.fields)) {
+      if (value !== undefined && value !== null) {
+        cleanFields[key] = value;
+      }
+    }
+    if (Object.keys(cleanFields).length === 0) {
+      throw new Error(`第${idx + 1}条记录没有有效字段值`);
+    }
+    return { fields: cleanFields };
+  });
+
   const allInserted = [];
   let errors = [];
 
-  for (let i = 0; i < records.length; i += BATCH_SIZE) {
-    const chunk = records.slice(i, i + BATCH_SIZE);
-    try {
-      const result = await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`, {
-        records: chunk,
-      });
-      const inserted = result.data?.records || [];
-      allInserted.push(...inserted);
-    } catch (e) {
-      errors.push(`第${Math.floor(i / BATCH_SIZE) + 1}批(${chunk.length}条): ${e.message}`);
+  for (let i = 0; i < validated.length; i += BATCH_SIZE) {
+    const chunk = validated.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = await feishuApi('POST',
+          `/bitable/v1/apps/${appToken}/tables/${tableId}/records/batch_create`,
+          { records: chunk }
+        );
+        const inserted = result.data?.records || [];
+        allInserted.push(...inserted);
+
+        if (inserted.length < chunk.length) {
+          console.warn(`[batchAdd] 第${batchNum}批: 请求${chunk.length}条, 实际返回${inserted.length}条`);
+        }
+        break;
+      } catch (e) {
+        const errMsg = e.message || '';
+        if (attempt < MAX_RETRIES && isRetryableBitableError(errMsg)) {
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+          continue;
+        }
+        const fieldHints = parseFieldError(e);
+        errors.push(
+          `第${batchNum}批(${chunk.length}条): ${errMsg}${fieldHints ? '. 字段提示: ' + fieldHints : ''}`
+        );
+        break;
+      }
     }
+  }
+
+  // 写入0条时自动诊断字段结构
+  if (allInserted.length === 0 && errors.length > 0) {
+    try {
+      const fields = await listTableFields(appToken, tableId);
+      const fieldNames = (fields?.items || []).map(f => f.field_name).join(', ');
+      errors.push(`诊断建议: 表中当前字段为 [${fieldNames}]，请检查records的字段名是否匹配。`);
+    } catch {}
   }
 
   return {
@@ -417,6 +465,22 @@ export async function batchAddBaseRecords(appToken, tableId, records) {
     records: allInserted,
     errors: errors.length > 0 ? errors : undefined,
   };
+}
+
+function isRetryableBitableError(errMsg) {
+  const retryable = ['timeout', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'socket',
+    'network', 'rate limit', 'too many requests', '429', '500', '502', '503',
+    'InternalError', 'resource_exhausted', 'deadline_exceeded', 'unavailable'];
+  return retryable.some(p => errMsg.toLowerCase().includes(p.toLowerCase()));
+}
+
+function parseFieldError(e) {
+  const msg = e.message || '';
+  const fieldMatch = msg.match(/field[:.\s]*['"]?(\w+)['"]?/i);
+  if (fieldMatch) return `字段"${fieldMatch[1]}"可能有问题`;
+  if (msg.includes('type') && msg.includes('field')) return '字段类型与值不匹配';
+  if (msg.includes('duplicate')) return '存在重复记录';
+  return null;
 }
 
 // ─── 多维表格字段管理 ────────────────────────────
