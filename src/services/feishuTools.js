@@ -810,6 +810,53 @@ export async function feishuConvertExcelToBitable(input) {
   return response;
 }
 
+// ─── 工具：创建视图 ───────────────────────────────
+
+export async function feishuCreateViews(input) {
+  const { app_token, table_id, view_types, group_field, date_field } = input || {};
+  if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+
+  let types = view_types;
+  if (!types || types.length === 0) {
+    try {
+      const { createDefaultViews, listTableFields, recommendViewTypes } = await import('./feishu');
+      const fieldResult = await listTableFields(app_token, table_id);
+      types = recommendViewTypes(fieldResult?.items || []);
+    } catch { types = ['grid']; }
+  }
+
+  try {
+    const { createDefaultViews, getFieldIdMap, listTableFields } = await import('./feishu');
+
+    let groupFieldId = group_field;
+    let dateFieldId = date_field;
+
+    if (types.includes('kanban') && !groupFieldId) {
+      const fieldResult = await listTableFields(app_token, table_id);
+      const selectField = (fieldResult?.items || []).find(f => f.type === 3 || f.type === 4);
+      groupFieldId = selectField?.field_id;
+    }
+    if (types.includes('calendar') && !dateFieldId) {
+      const fieldResult = await listTableFields(app_token, table_id);
+      const dateField = (fieldResult?.items || []).find(f => f.type === 5);
+      dateFieldId = dateField?.field_id;
+    }
+
+    const viewResult = await createDefaultViews(app_token, table_id, {
+      viewTypes: types, groupFieldId, dateFieldId,
+    });
+
+    let response = `视图创建结果：\n`;
+    response += viewResult.created.map(v => `✅ ${v}视图`).join('\n');
+    if (viewResult.errors.length > 0) {
+      response += '\n' + viewResult.errors.map(e => `⚠️ ${e}`).join('\n');
+    }
+    return response;
+  } catch (e) {
+    return `创建视图失败: ${e.message}`;
+  }
+}
+
 export const FEISHU_TOOLS = [
   {
     name: 'feishu_send_message',
@@ -995,6 +1042,21 @@ export const FEISHU_TOOLS = [
       required: ['file_path'],
     },
   },
+  {
+    name: 'feishu_create_views',
+    description: '为飞书多维表格的数据表创建视图（表格/看板/日历/甘特/画册）。不指定视图类型时会自动智能推荐。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        app_token: { type: 'string', description: '多维表格的app_token' },
+        table_id: { type: 'string', description: '数据表的table_id' },
+        view_types: { type: 'array', items: { type: 'string' }, description: '视图类型数组: grid/kanban/calendar/gantt/gallery' },
+        group_field: { type: 'string', description: '看板分组字段ID（可选）' },
+        date_field: { type: 'string', description: '日历日期字段ID（可选）' },
+      },
+      required: ['app_token', 'table_id'],
+    },
+  },
 ];
 
 export const FEISHU_EXECUTORS = {
@@ -1013,4 +1075,5 @@ export const FEISHU_EXECUTORS = {
   feishu_download_resource: feishuDownloadResource,
   feishu_import_to_cloud_doc: feishuImportToCloudDoc,
   feishu_convert_excel: feishuConvertExcelToBitable,
+  feishu_create_views: feishuCreateViews,
 };

@@ -509,6 +509,70 @@ export async function deleteTableField(appToken, tableId, fieldId) {
   return result.data;
 }
 
+// ─── 视图管理 ─────────────────────────────────────
+
+/** 为多维表格数据表创建默认视图 */
+export async function createDefaultViews(appToken, tableId, options = {}) {
+  const { viewTypes = ['grid'], groupFieldId, dateFieldId } = options;
+  const created = [];
+  const errors = [];
+
+  for (const viewType of viewTypes) {
+    try {
+      let viewConfig;
+      switch (viewType) {
+        case 'grid':
+          viewConfig = { view_name: '表格视图', view_type: 'grid' };
+          break;
+        case 'kanban':
+          if (!groupFieldId) { errors.push(`看板视图需要分组字段ID`); continue; }
+          viewConfig = { view_name: '看板视图', view_type: 'kanban',
+            property: { kanban: { group_field_id: groupFieldId } } };
+          break;
+        case 'calendar':
+          if (!dateFieldId) { errors.push(`日历视图需要日期字段ID`); continue; }
+          viewConfig = { view_name: '日历视图', view_type: 'calendar',
+            property: { calendar: { date_field_id: dateFieldId } } };
+          break;
+        case 'gallery':
+          viewConfig = { view_name: '画册视图', view_type: 'gallery' };
+          break;
+        case 'gantt':
+          viewConfig = { view_name: '甘特视图', view_type: 'gantt' };
+          break;
+        default:
+          errors.push(`不支持的视图类型: ${viewType}`);
+          continue;
+      }
+      await feishuApi('POST', `/bitable/v1/apps/${appToken}/tables/${tableId}/views`, viewConfig);
+      created.push(viewType);
+    } catch (e) {
+      errors.push(`${viewType}视图: ${e.message}`);
+    }
+  }
+  return { success: created.length > 0, created, errors };
+}
+
+/** 获取表中字段ID映射 */
+export async function getFieldIdMap(appToken, tableId) {
+  const result = await listTableFields(appToken, tableId);
+  const items = result?.items || [];
+  const map = {};
+  for (const f of items) { map[f.field_name] = f.field_id; map[f.field_id] = f.field_name; }
+  return map;
+}
+
+/** 根据字段结构推荐视图类型 */
+export function recommendViewTypes(fields) {
+  const recommendations = ['grid'];
+  const fieldTypes = fields.map(f => f.type);
+  if (fieldTypes.includes(5)) recommendations.push('calendar');
+  if (fieldTypes.some(t => t === 3 || t === 4)) recommendations.push('kanban');
+  if (fieldTypes.some(t => t === 11 || t === 12)) recommendations.push('gallery');
+  if (fieldTypes.includes(5) && fieldTypes.includes(1001)) recommendations.push('gantt');
+  return recommendations;
+}
+
 // ─── 事件回调 ─────────────────────────────────────
 
 export function onFeishuMessage(callback) {
