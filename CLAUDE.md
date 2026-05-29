@@ -1,203 +1,254 @@
-# CC App 开发规范与铁律
+# CC App 开发规范与项目知识库
 
-此文件是 Claude Code 开发本项目的唯一准则，所有规则必须严格遵守。
-
----
-
-## 全自动工作流
-
-### 用户消息中包含 `1` 时 → 全链路部署
-
-每当你编辑源文件后，且用户消息中有 `1`，必须按顺序完整执行：
-
-1. `cd D:/cc安装包/CC-App && npm test`
-2. `cd D:/cc安装包/CC-App && npm run build`
-3. `cd D:/cc安装包/CC-App && npm run test:e2e`
-4. `cd D:/cc安装包/CC-App && git add <修改的文件> && git commit -m "<type>: 描述改动"`
-5. `cd D:/cc安装包/CC-App && git push`
-6. 部署到 D:\cc安装包\1\：
-   ```
-   rm -rf D:/cc安装包/1/resources/app/dist/assets
-   cp -r dist/* D:/cc安装包/1/resources/app/dist/
-   cp electron/main.js D:/cc安装包/1/resources/app/electron/main.js
-   cp electron/preload.js D:/cc安装包/1/resources/app/electron/preload.js
-   ```
-7. 告诉用户：部署完成，请重启应用。
-
-**任何一步失败，立即停止并报告错误。禁止跳过。**
-
-### 用户消息中无 `1` 时 → 仅备份，不部署
-
-1. `cd D:/cc安装包/CC-App && npm test`
-2. `cd D:/cc安装包/CC-App && npm run build`
-3. `cd D:/cc安装包/CC-App && git add <修改的文件> && git commit -m "<type>: 描述改动"`
-4. `cd D:/cc安装包/CC-App && git push`
-
-不跑 E2E，不部署。只保证代码通过测试、已备份。
+> 最后更新：2026-05-30 | 测试：237 单元 + 7 E2E
 
 ---
 
-## 绝对不能做的事
+## 一、项目概述
 
-- 禁止在测试/构建完成之前说"搞定了"
-- 禁止修改代码后不提交就回复用户
-- 禁止在计划模式转执行模式后要求任何形式的审批
-- 禁止面向用户输出英文（思考过程、日志、提示信息必须全中文；专有名词如 API、token 除外）
-- 禁止修改核心功能的内部逻辑（见"核心功能保护规则"）
-- 禁止修改其他模块的代码，除非明确要求
-- 禁止删除你不理解的注释、日志或错误处理代码
-- 禁止使用未在 package.json 中声明的新依赖
-- 禁止改变 IPC 通信接口格式和工具调用参数格式
+**CC智能伙伴** 是一款 Windows 桌面 AI 伴侣应用。
+
+- **技术栈**：Electron 42 + React 18 + Three.js 0.184 + Vite 5
+- **AI 后端**：兼容 OpenAI API 格式的 LLM（16 家供应商）
+- **飞书集成**：WebSocket 实时消息 + 多维表格 + 云文档 + 消息收发
+- **测试**：Vitest 237 单元测试 + Playwright 7 E2E 测试
 
 ---
 
-## 计划模式与执行模式铁律
+## 二、目录结构（极其重要！）
 
-**核心原则**：用户点击"执行"按钮 = 完全同意执行整个计划，不需要任何额外审批。
+```
+D:\cc安装包\汇总\CC-App\           ← 源码+开发目录（在这里改代码）
+  electron/                          ← Electron 主进程
+    main.js                           ← IPC handlers + 飞书集成 + 文件操作
+    preload.js                        ← contextBridge API 桥接
+    feishu-ws.js                      ← 飞书 WebSocket 客户端
+  src/
+    services/                         ← 业务逻辑（40个模块）
+      feishu.js                       ← 飞书 API 封装（70+函数）
+      feishuTools.js                  ← 飞书工具定义+执行器（15个工具）
+      sessionManager.js               ← 聊天会话管理（cc_sessions）
+      knowledgeBase.js                ← 知识库（TF-IDF 搜索+RAG）
+      fileReader.js                   ← 统一文件读取引擎
+      excelParser.js                  ← Excel→多维表格解析器
+      bitableTemplates.js             ← 业务场景模板库
+    components/                       ← React UI 组件
+      ChatInterface.jsx               ← 主交互界面 ⚠️核心保护
+      ChatBubbleLayer.jsx             ← 聊天气泡+思考面板 ⚠️核心保护
+      ToolCallCard.jsx                ← 工具调用卡片 ⚠️核心保护
+      InputBar.jsx                    ← 底部输入栏（<input>，非<textarea>）
+      OnboardingWizard.jsx            ← 引导向导（5步）
+      StageBackground.jsx             ← 2D全息舞台背景（Canvas）
+      CharacterScene.jsx              ← 3D角色场景（Three.js）
+    store/AppContext.jsx              ← 全局状态管理
+  e2e/                                ← E2E 测试
+    helpers/
+      electron.js                     ← Playwright 开发版启动工具
+      running-app.js                  ← Playwright 运行版启动工具
+    mocks/feishu-mock.js              ← 飞书 API Mock（30+端点）
+  deploy.bat                          ← 一键部署脚本
 
-**具体规则**：
+D:\cc安装包\1cc最终版\              ← 运行版（用户双击 electron.exe）
+  electron.exe                        ← 独立 Electron 运行时
+  resources/app/
+    electron/                         ← ← ← 部署目标！main.js/preload.js/feishu-ws.js
+    dist/                             ← ← ← 部署目标！前端构建产物
+    node_modules/                     ← 含 @larksuiteoapi/node-sdk
+  cc-debug.bat                        ← 调试模式启动（端口9223）
+```
 
-- 计划转执行后全程自动执行，不允许询问"是否继续"、"是否确认"等问题
-- 不允许弹出任何需要用户点击确认的对话框
-- 不允许暂停等待用户输入
-- 遇到可自动重试的错误（网络错误、API 超时等），自动重试最多 3 次
-- 遇到不可重试的错误，记录详细错误信息，继续执行计划的其他部分
-- 整个计划执行完成后，统一向用户报告所有成功和失败的项
-- 只有当错误导致整个计划完全无法继续时，才暂停并向用户报告
-
-**思考过程必须全中文**：
-
-- 所有思考过程、日志、状态更新使用中文（专有名词除外）
-- 思考过程应清晰简洁，让用户能理解你在做什么、为什么这么做
-
-**进度反馈要求**：
-
-- 执行过程中实时更新进度
-- 每完成一步：`✓ 已完成：xxx`
-- 遇到错误时：`✗ 失败：xxx（原因：xxx）`
-
----
-
-## 核心功能保护规则
-
-以下是 CC App 的核心功能，任何修改都必须优先保证这些功能正常工作：
-
-**思考输出面板（ChatBubbleLayer.jsx）**：
-- 流式思考输出（逐字显示）
-- 思考过程折叠/展开
-- 思考过程与正文输出的分离
-
-**正文输出（ChatInterface.jsx）**：
-- 消息气泡的显示和样式
-- 流式文本输出
-- 代码块高亮显示
-- 图片和文件的显示
-- 消息时间戳和发送状态
-
-**工具调用卡片（ToolCallCard.jsx）**：
-- 工具调用的显示和状态更新
-- 工具参数的格式化显示
-- 工具执行结果的展示
-- 工具调用的折叠/展开
-
-**保护措施**：
-
-- 修改前：运行核心功能测试，手动验证功能正常
-- 修改后：除了单元测试，手动验证"发送消息→思考过程→正文输出→工具调用"完整链路
-- 需要新功能时通过扩展方式实现，不修改原有核心逻辑
-- 为这些核心功能维护专门的 E2E 测试用例
+**⚠️ 最常犯的错误**：改了 `汇总/CC-App/electron/` 的代码但忘记同步到 `1cc最终版/resources/app/electron/`。
 
 ---
 
-## 文件生成必须验证落盘
+## 三、连接运行版 CC 做真实测试
 
-所有文件生成类工具（create_excel、generate_ppt、generate_website 等），在返回成功消息前，必须用 `window.electronAPI.fileExists(outputPath)` 验证文件真实存在。
+### 启动调试模式
+```
+双击 D:\cc安装包\1cc最终版\cc-debug.bat
+```
+这会以 `--remote-debugging-port=9223` 启动 CC，Claude 可以通过 CDP 直接操作。
 
-禁止仅凭 `exit code === 0` 或 `writeFile` 返回值判定成功。
-
+### Claude 连接代码
 ```javascript
-const fileExists = await window.electronAPI.fileExists(outputPath);
-if (!fileExists) {
-    return `文件生成失败！${outputPath} 未被创建。`;
-}
-return `文件已生成：${outputPath}`;
+const { chromium } = require('playwright');
+const browser = await chromium.connectOverCDP('http://127.0.0.1:9223');
+const page = browser.contexts()[0].pages()[0];
+
+// 绕过 Three.js Canvas 遮挡的点击
+await page.evaluate((text) => {
+  const els = document.querySelectorAll('*');
+  for (const el of els) {
+    if (el.textContent && el.textContent.trim() === text) { el.click(); return; }
+  }
+}, '记忆');
+
+// 在输入框输入文字
+const input = page.locator('input:not([type]), textarea').first();
+await input.click({ force: true });
+await input.fill('你好');
+await page.keyboard.press('Enter');
+```
+
+### ⚠️ Three.js Canvas 遮挡问题
+3D 角色场景的 `<canvas data-engine="three.js r184">` 覆盖在 UI 上方，拦截所有点击。必须用 `page.evaluate()` 执行 JavaScript 点击，或使用 `{ force: true }`。
+
+### ⚠️ 输入框是 `<input>` 不是 `<textarea>`
+CC 的输入框在 [InputBar.jsx](src/components/InputBar.jsx) 中是 `<input>` 元素，选择器用 `input:not([type])` 匹配。
+
+---
+
+## 四、引导界面跳过
+
+App.jsx 根据 `localStorage.getItem('cc_onboarding_done') === '1'` 判断是否显示引导。测试时直接设置：
+```javascript
+await page.evaluate(() => { localStorage.setItem('cc_onboarding_done', '1'); });
+await page.reload();
 ```
 
 ---
 
-## 工具开发规范
+## 五、部署流程
 
-- JS 生成 Python 脚本时，Python 变量必须用 f-string：`f"A{header_row}"` 而非普通字符串 `"A{header_row}"`
-- `shellExecute` 命令中的路径必须用双引号包裹
-- 工具返回的错误信息必须包含具体错误详情（stdout/stderr）
-- 所有工具执行必须有超时限制（默认 30 秒）
-- 工具参数必须严格验证，不符合的直接返回错误
+### 一键部署
+```bash
+# 双击或运行
+D:\cc安装包\汇总\CC-App\deploy.bat
+```
 
----
+### 手动部署步骤
+```bash
+cd D:\cc安装包\汇总\CC-App
+npm test                   # 237 测试
+npm run build              # 前端构建
+# 部署到运行版
+cp -r dist/* "D:\cc安装包\1cc最终版\resources\app\dist\"
+cp electron/main.js "D:\cc安装包\1cc最终版\resources\app\electron\main.js"
+cp electron/preload.js "D:\cc安装包\1cc最终版\resources\app\electron\preload.js"
+cp electron/feishu-ws.js "D:\cc安装包\1cc最终版\resources\app\electron\feishu-ws.js"
+```
 
-## 飞书功能开发特殊规则
-
-- 所有 API 调用必须通过统一的 FeishuClient，禁止直接用 axios 或 fetch
-- 每个 API 调用必须有 try-catch，对不同错误码分别处理
-- 可重试的错误使用指数退避重试（最多 3 次）
-- 必须遵守飞书 API 频率限制，添加限流机制
-- WebSocket 必须在 3 秒内响应，消息处理全部异步
-- WebSocket 断开后自动重连，使用指数退避策略
-- 每 30 秒发送心跳包检测连接
-- 必须添加消息去重机制
-
----
-
-## 代码修改通用规则
-
-**修改前**：
-- 阅读该文件的全部内容及依赖文件
-- 运行该模块的所有单元测试
-- 查看 Git 历史了解之前的修改原因
-
-**修改中**：
-- 只修改与当前任务直接相关的代码
-- 保持原有接口不变
-- 添加必要注释说明修改原因
-
-**修改后**：
-- 运行所有相关模块的单元测试
-- 手动验证核心功能是否正常
-- 添加对应的测试用例（特别是修 bug 时）
-- 更新 CLAUDE.md（如果发现新坑）
+### 用户数据位置
+- 飞书配置：`%APPDATA%/cc-smart-companion/cc_feishu_config.json`
+- 飞书会话：`%APPDATA%/cc-smart-companion/cc_feishu_session.json`
+- 前端 localStorage 在渲染进程的 LevelDB 中
 
 ---
 
-## 提交信息规范
+## 六、测试体系
 
-格式：`<type>: 简短描述`
+### 单元测试（237 个，13 文件）
+```bash
+npm test                    # Vitest run，~20s
+```
+
+### E2E 测试（7 个）
+```bash
+npm run test:e2e            # Playwright，~40s，单 worker
+```
+
+### Pre-commit 自动执行
+```
+单元测试(237) → E2E测试(7) → 全部通过才允许提交
+失败跳过：git commit --no-verify
+```
+
+### 连接真实 CC 的验证流程
+1. 用户用 `cc-debug.bat` 启动 CC
+2. Claude 连接 `http://127.0.0.1:9223`
+3. 依次验证：记忆面板 → 知识图谱 → 人格面板 → 工具箱 → 聊天记录 → AI对话
+4. 飞书验证：检查 "来自飞书" 消息数 → 发送消息到飞书 → 检查飞书是否收到
+
+---
+
+## 七、核心功能保护（严禁修改内部逻辑）
+
+| 文件 | 保护内容 |
+|------|---------|
+| ChatBubbleLayer.jsx | 流式思考输出、折叠/展开、与正文分离 |
+| ChatInterface.jsx | 消息气泡、流式输出、代码高亮、文件显示 |
+| ToolCallCard.jsx | 工具调用状态更新、参数格式化、折叠/展开 |
+
+---
+
+## 八、飞书架构
+
+```
+飞书服务器
+  ↕ WebSocket
+feishu-ws.js (主进程, @larksuiteoapi/node-sdk WSClient)
+  ↕ IPC feishu:message
+main.js → preload.js → 渲染进程
+  ↕ dispatchFeishuMessage
+ChatInterface.jsx → AI处理链
+  ↕ 工具调用
+feishuTools.js → feishu.js → feishuApi() → 飞书开放平台 API
+```
+
+关键 IPC handlers：`feishu:configure`, `feishu:status`, `feishu:uploadImage`, `feishu:uploadImageBase64`, `feishu:downloadResource`, `feishu:getSession`, `feishu:refreshSession`
+
+---
+
+## 九、字段类型映射（25+种）
+
+飞书多维表格支持的全部字段类型定义在 [feishuTools.js](src/services/feishuTools.js) 的 `FIELD_TYPE_MAP` 中。`inferFieldType(fieldName, sampleValues)` 自动推断类型。
+
+---
+
+## 十、已知问题和修复
+
+### 2026-05-30
+1. **三个致命飞书 Bug 的根因** — 运行版 `resources/app/electron/` 的后端文件是旧版（无飞书 IPC handlers），前端 dist 已更新但后端未同步。修复：deploy.bat 同步所有 electron/ 文件。
+2. **E2E 测试卡在引导界面** — 首次运行时无 `cc_onboarding_done` localStorage 键。修复：测试自动设置该键并 reload。
+3. **Three.js Canvas 遮挡点击** — 3D 角色场景覆盖 UI。修复：使用 `page.evaluate()` 执行 JS 点击。
+4. **输入框选择器错误** — InputBar 使用 `<input>` 不是 `<textarea>`。正确选择器：`input:not([type])`。
+5. **Playwright electron.launch() 不兼容** — CC 使用自定义 electron/main.js 入口。修复：使用 `chromium.connectOverCDP()` 连接。
+
+### 2026-05-29
+6. **计划模式转执行后反复要求审批** — 添加了计划模式与执行模式铁律
+7. **思考过程输出全英文** — promptBuilder 添加了中文思考指令
+8. **文件生成工具返回成功但文件不存在** — 添加了文件存在性验证
+9. **用户画像垃圾数据** — userProfile.js 添加了校验
+
+---
+
+## 十一、提交规范
+
+格式：`<type>: 中文描述`
 
 | type | 含义 |
 |------|------|
 | feat | 新功能 |
 | fix | 修复 bug |
 | docs | 文档修改 |
-| style | 代码格式修改 |
-| refactor | 代码重构 |
 | test | 测试相关 |
-| chore | 构建/工具修改 |
-
-示例：
-```
-feat: 添加知识图谱节点搜索功能
-fix: 修复计划模式执行时反复要求审批的问题
-test: 添加思考面板流式输出测试用例
-```
+| chore | 构建/工具 |
 
 ---
 
-## 已知问题和修复方法
+## 十二、自动化工作流
 
-### 2026-05-29
+### 有 `1` 标志 → 全链路部署
+`npm test → npm run build → npm run test:e2e → git commit → git push → 部署到1cc最终版`
 
-1. **计划模式转执行后反复要求审批** — 添加了计划模式与执行模式铁律
-2. **思考过程输出全英文** — promptBuilder 添加了中文思考指令
-3. **修改其他功能时破坏思考面板** — 添加了核心功能保护规则
-4. **文件生成工具返回成功但文件不存在** — 添加了文件存在性验证
-5. **用户画像垃圾数据** — userProfile.js 添加了 _isValidName() 和 _cleanProfile() 校验
-6. **KnowledgeSystem 提取引擎未初始化** — ChatInterface.jsx 传入 { sendModelRequest } 参数
+### 无 `1` 标志 → 仅提交
+`npm test → npm run build → git commit → git push`
+
+### 每次 commit 自动执行
+`237 单元测试 → 7 E2E 测试 → 全部通过才允许提交`
+
+---
+
+## 十三、测试验证清单（Claude 每次改动后必须执行）
+
+当用户用 `cc-debug.bat` 启动 CC 后，连接端口 9223 逐项验证：
+
+1. **记忆面板** — 点击"记忆"，检查内容是否正常、无乱码
+2. **知识图谱看板** — 点击"知识图谱"，检查节点/关系是否正确
+3. **人格面板** — 点击"人格"，检查用户画像字段是否正确
+4. **工具箱** — 点击"工具箱"，检查飞书卡片是否显示
+5. **聊天记录** — 点击"聊天记录"，检查历史会话是否存在
+6. **AI 对话** — 发送"你好"，验证思考面板出现 + AI 回复正常
+7. **飞书消息** — 检查聊天记录中是否有"来自飞书"的历史消息
+8. **飞书收发** — 从飞书 APP 给 CC 发消息 → 检查 CC 是否收到 → CC 回复到飞书 → 检查飞书是否收到
+9. **Excel→多维表格** — 从飞书给 CC 发 Excel → 说"转为多维表格" → 打开链接截图验证
