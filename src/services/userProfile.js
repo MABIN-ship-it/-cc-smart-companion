@@ -20,9 +20,39 @@ const STORAGE_KEY = 'cc_user_profile';
 export function loadProfile() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : { fields: {}, updatedAt: 0 };
+    const profile = raw ? JSON.parse(raw) : { fields: {}, updatedAt: 0 };
+    _cleanProfile(profile);
+    return profile;
   } catch {
     return { fields: {}, updatedAt: 0 };
+  }
+}
+
+function _cleanProfile(profile) {
+  const { fields } = profile;
+  if (!fields || typeof fields !== 'object') return;
+  // 姓名：必须是2-4个汉字
+  if (fields['姓名'] && !_isValidName(fields['姓名'])) {
+    delete fields['姓名'];
+  }
+  // 性别：必须是男/女性别词
+  if (fields['性别'] && !/^(男[生孩]?|女[生孩]?)$/.test(fields['性别'])) {
+    delete fields['性别'];
+  }
+  // 城市：必须是中国城市名
+  if (fields['城市'] && !/^[一-鿿]{2,6}(?:市|省|区|县)?$/.test(fields['城市'])) {
+    delete fields['城市'];
+  }
+  // 检查所有字段是否有明显垃圾数据
+  const garbagePatterns = [/什么样/, /开始瞎/, /不知道/, /不清楚/, /不告诉你/, /猜猜看/];
+  for (const key of Object.keys(fields)) {
+    const val = typeof fields[key] === 'string' ? fields[key] : JSON.stringify(fields[key]);
+    for (const pattern of garbagePatterns) {
+      if (pattern.test(val)) {
+        delete fields[key];
+        break;
+      }
+    }
   }
 }
 
@@ -149,18 +179,27 @@ export function applyDiff(diff) {
  * @param {string} aiResp
  * @returns {ProfileDiff|null}
  */
+function _isValidName(name) {
+  // 中文姓名：2-4个汉字，不含数字、标点、常见垃圾词
+  if (!/^[一-鿿]{2,4}$/.test(name)) return false;
+  const garbage = ['一个人','什么样','怎样','什么','一个','不知道','不清楚','不明白','不告诉你','猜猜看','无所谓','随便','都行'];
+  if (garbage.some(g => name.includes(g))) return false;
+  return true;
+}
+
 export function extractProfileDiff(userMsg, aiResp) {
   const text = (userMsg || '') + ' ' + (aiResp || '');
+  const userText = userMsg || '';
   const diff = { add: {}, append: {}, remove: [] };
 
-  // ── 自我介绍 ──
-  const nameMatch = text.match(/(?:我叫|我是|我叫作)(.{1,20}?)(?:，|。|,|\.|\s|$)/);
-  if (nameMatch) diff.add['姓名'] = nameMatch[1].trim();
+  // ── 自我介绍（仅从用户消息提取，避免 AI 回复中的误匹配）──
+  const nameMatch = userText.match(/(?:我叫|我是|我叫作)(.{1,20}?)(?:，|。|,|\.|\s|$)/);
+  if (nameMatch && _isValidName(nameMatch[1].trim())) diff.add['姓名'] = nameMatch[1].trim();
 
-  const genderMatch = text.match(/(?:我是[一个位名]{0,2})(男[生孩]|女[生孩])/);
+  const genderMatch = userText.match(/(?:我是[一个位名]{0,2})(男[生孩]|女[生孩])/);
   if (genderMatch) diff.add['性别'] = genderMatch[1].trim();
 
-  const cityMatch = text.match(/(?:我(?:在|住|住在|生活在))([一-龥]{2,6}(?:市|省|区|县)?)(?:，|。|,|\.|\s|$)/);
+  const cityMatch = userText.match(/(?:我(?:在|住|住在|生活在))([一-龥]{2,6}(?:市|省|区|县)?)(?:，|。|,|\.|\s|$)/);
   if (cityMatch && cityMatch[1].length >= 2) diff.add['城市'] = cityMatch[1].trim();
 
   const workMatch = text.match(/(?:我(?:是|做|在|从事))(?:一[个名位])?(.{2,30}?)(?:的)?(?:工作|工程师|设计师|产品|运营|开发|程序员|PM)(?:，|。|,|\.|\s|$|等)/);

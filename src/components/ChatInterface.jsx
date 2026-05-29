@@ -132,7 +132,7 @@ export default function ChatInterface() {
     }
 
     // Initialize KnowledgeSystem (await migration)
-    const ks = getKnowledgeSystem();
+    const ks = getKnowledgeSystem({ sendModelRequest });
     if (ks) {
       (async () => {
         try {

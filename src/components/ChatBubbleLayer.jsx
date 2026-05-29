@@ -30,7 +30,7 @@ function renderMarkdown(text) {
 
 /* ---------- CollapsedThinking 组件 ---------- */
 function CollapsedThinking({ text, expanded: controlledExpanded, onToggle }) {
-  const [selfExpanded, setSelfExpanded] = useState(true);
+  const [selfExpanded, setSelfExpanded] = useState(false);
   const expanded = controlledExpanded !== undefined ? controlledExpanded : selfExpanded;
   const handleToggle = () => {
     if (onToggle) onToggle(!expanded);
