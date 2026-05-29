@@ -573,6 +573,42 @@ export function recommendViewTypes(fields) {
   return recommendations;
 }
 
+// ─── 仪表盘管理 ───────────────────────────────────
+
+export async function createDashboard(appToken, tableId, dashboardName, components = []) {
+  try {
+    const body = { name: dashboardName || '数据概览', components };
+    const result = await feishuApi('POST',
+      `/bitable/v1/apps/${appToken}/tables/${tableId}/dashboards`, body);
+    return { success: true, dashboardId: result.data?.dashboard?.dashboard_id };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+export function generateDefaultDashboardComponents(fields, tableId) {
+  const components = [];
+  const numericFields = fields.filter(f => f.type === 2 || f.type === 22 || f.type === 1001);
+  const categoryFields = fields.filter(f => f.type === 3 || f.type === 4);
+  const dateField = fields.find(f => f.type === 5);
+
+  for (const f of numericFields.slice(0, 4)) {
+    components.push({ type: 'statistic', config: { title: `${f.field_name}总计`, field_id: f.field_id, aggregation: 'sum' } });
+  }
+
+  if (categoryFields.length > 0) {
+    components.push({ type: 'chart', config: { title: `${categoryFields[0].field_name}分布`, chart_type: 'pie',
+      category_field_id: categoryFields[0].field_id, value_field_id: categoryFields[0].field_id, value_aggregation: 'count' } });
+  }
+
+  if (dateField && numericFields.length > 0) {
+    components.push({ type: 'chart', config: { title: `${numericFields[0].field_name}趋势`, chart_type: 'bar',
+      category_field_id: dateField.field_id, value_field_id: numericFields[0].field_id, value_aggregation: 'sum' } });
+  }
+
+  return components;
+}
+
 // ─── 事件回调 ─────────────────────────────────────
 
 export function onFeishuMessage(callback) {

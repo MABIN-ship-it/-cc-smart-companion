@@ -857,6 +857,73 @@ export async function feishuCreateViews(input) {
   }
 }
 
+// ─── 工具：业务场景识别 ─────────────────────────────
+
+export async function feishuDetectBusinessScene(input) {
+  const { file_path } = input || {};
+  if (!file_path) return '请提供文件路径(file_path)';
+
+  const resolvedPath = resolveFilePath(file_path);
+  try {
+    const { parseExcelForBitable } = await import('./excelParser');
+    const { detectBusinessScene } = await import('./bitableTemplates');
+
+    const parseResult = await parseExcelForBitable(resolvedPath);
+    if (!parseResult.success) return `文件解析失败: ${parseResult.error}`;
+
+    const sceneResult = detectBusinessScene(parseResult.sheets);
+    const firstSheet = parseResult.sheets[0];
+
+    let response = `文件分析结果：\n`;
+    response += `- 工作表数: ${parseResult.sheets.length}\n`;
+    if (firstSheet) {
+      response += `- 表头字段(${firstSheet.headerRow.length}个): ${firstSheet.headerRow.join(', ')}\n`;
+      response += `- 数据行数: ${firstSheet.rowCount}\n`;
+    }
+    response += `\n业务场景识别：\n`;
+    if (sceneResult.confidence >= 0.3) {
+      response += `- 最可能: ${sceneResult.name}（置信度 ${Math.round(sceneResult.confidence * 100)}%）\n`;
+      response += `- 匹配关键词: ${sceneResult.matchedKeywords.join(', ')}\n`;
+      if (sceneResult.template) {
+        response += `- 推荐视图: ${sceneResult.template.views.join(', ')}\n`;
+      }
+      if (sceneResult.suggestions.length > 1) {
+        response += `- 其他可能: ${sceneResult.suggestions.slice(1).map(s => s.scene + '(' + Math.round(s.confidence * 100) + '%)').join(', ')}`;
+      }
+    } else {
+      response += `- 未匹配到特定业务场景，使用通用表格模板\n`;
+    }
+    return response;
+  } catch (e) {
+    return `场景识别失败: ${e.message}`;
+  }
+}
+
+// ─── 工具：创建仪表盘 ──────────────────────────────
+
+export async function feishuCreateDashboard(input) {
+  const { app_token, table_id, dashboard_name } = input || {};
+  if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+
+  try {
+    const { createDashboard, generateDefaultDashboardComponents, listTableFields, getFieldIdMap } = await import('./feishu');
+    const fieldResult = await listTableFields(app_token, table_id);
+    const fields = fieldResult?.items || [];
+    if (fields.length === 0) return '数据表没有字段，无法创建仪表盘。请先添加字段和数据。';
+
+    const components = generateDefaultDashboardComponents(fields, table_id);
+    const result = await createDashboard(app_token, table_id, dashboard_name || '数据概览', components);
+
+    if (result.success && result.dashboardId) {
+      const componentTypes = components.map(c => c.type === 'statistic' ? '统计卡片' : c.config?.chart_type === 'pie' ? '饼图' : '柱状图');
+      return `仪表盘"${dashboard_name || '数据概览'}"已创建！\ndashboard_id: ${result.dashboardId}\n自动生成了 ${components.length} 个组件: ${componentTypes.join(', ')}`;
+    }
+    return `创建仪表盘失败: ${result.error || '未知错误'}`;
+  } catch (e) {
+    return `创建仪表盘失败: ${e.message}`;
+  }
+}
+
 export const FEISHU_TOOLS = [
   {
     name: 'feishu_send_message',
@@ -1057,6 +1124,30 @@ export const FEISHU_TOOLS = [
       required: ['app_token', 'table_id'],
     },
   },
+  {
+    name: 'feishu_detect_scene',
+    description: '分析Excel文件内容，识别对应的业务场景（项目管理/客户管理/库存管理/HR花名册/财务管理/日程管理），并推荐字段和视图配置。用户说"看下这是什么表格"、"分析表格类型"时调用。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: '文件的本地路径' },
+      },
+      required: ['file_path'],
+    },
+  },
+  {
+    name: 'feishu_create_dashboard',
+    description: '为多维表格数据表自动创建仪表盘，包含统计卡片、图表等组件。当用户说"生成仪表盘"、"创建统计面板"时调用。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        app_token: { type: 'string', description: '多维表格的app_token' },
+        table_id: { type: 'string', description: '数据表的table_id' },
+        dashboard_name: { type: 'string', description: '仪表盘名称（可选，默认"数据概览"）' },
+      },
+      required: ['app_token', 'table_id'],
+    },
+  },
 ];
 
 export const FEISHU_EXECUTORS = {
@@ -1076,4 +1167,6 @@ export const FEISHU_EXECUTORS = {
   feishu_import_to_cloud_doc: feishuImportToCloudDoc,
   feishu_convert_excel: feishuConvertExcelToBitable,
   feishu_create_views: feishuCreateViews,
+  feishu_detect_scene: feishuDetectBusinessScene,
+  feishu_create_dashboard: feishuCreateDashboard,
 };
