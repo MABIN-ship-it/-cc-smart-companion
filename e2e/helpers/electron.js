@@ -1,6 +1,6 @@
 /**
  * Playwright Electron 测试工具
- * 通过 CDP 连接 Electron（兼容任意 Electron 应用）
+ * 通过 CDP 连接 Electron，支持 UI 交互 + 自动跳过引导
  */
 const { chromium } = require('playwright');
 const path = require('path');
@@ -12,9 +12,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const ELECTRON_PATH = path.join(PROJECT_ROOT, 'node_modules', 'electron', 'dist', 'electron.exe');
 let portCounter = 9223;
 
-function getFreePort() {
-  return portCounter++;
-}
+function getFreePort() { return portCounter++; }
 
 function fetchJson(url) {
   return new Promise((resolve, reject) => {
@@ -27,7 +25,7 @@ function fetchJson(url) {
 }
 
 async function launchApp(options = {}) {
-  const { timeout = 30000 } = options;
+  const { timeout = 30000, skipOnboarding = true } = options;
   const debugPort = getFreePort();
 
   if (!fs.existsSync(ELECTRON_PATH)) {
@@ -67,19 +65,29 @@ async function launchApp(options = {}) {
     throw new Error(`CDP 在 ${timeout}ms 内未就绪 (端口 ${debugPort})`);
   }
 
-  // 用 CDP 连接
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${debugPort}`);
   const page = browser.contexts()[0]?.pages()[0];
   if (!page) throw new Error('无法获取页面');
 
   await page.waitForLoadState('domcontentloaded');
+
+  // 跳过引导界面：设置 localStorage 然后刷新
+  if (skipOnboarding) {
+    const hasOnboarding = await page.locator('.onboarding-overlay, .onboarding-card').count();
+    if (hasOnboarding > 0) {
+      console.log('[E2E] 检测到引导界面，自动跳过...');
+      await page.evaluate(() => { try { localStorage.setItem('cc_onboarding_done', '1'); } catch {} });
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      console.log('[E2E] 引导已跳过，进入聊天界面');
+    } else {
+      console.log('[E2E] 已在聊天界面');
+    }
+  }
+
   await page.waitForTimeout(2000);
 
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
-  page.on('console', msg => {
-    if (msg.type() === 'error') errors.push(msg.text());
-  });
 
   return { browser, page, child, errors, getErrors: () => [...errors] };
 }
@@ -90,4 +98,33 @@ async function screenshot(page, name) {
   await page.screenshot({ path: path.join(dir, `${name}-${Date.now()}.png`), fullPage: false });
 }
 
-module.exports = { launchApp, screenshot, PROJECT_ROOT, ELECTRON_PATH };
+/** 在聊天输入框输入文字并发送 */
+async function sendMessage(page, text) {
+  const selectors = ['textarea', 'input[type="text"]', 'input:not([type])', '[contenteditable="true"]',
+    '[role="textbox"]', '[class*="InputBar"] input', '[class*="input-bar"] input',
+    '[class*="chat"] input', '[class*="message"] input'];
+  for (const sel of selectors) {
+    const el = page.locator(sel).first();
+    if (await el.count() > 0 && await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await el.click();
+      await el.fill(text);
+      await page.keyboard.press('Enter');
+      return true;
+    }
+  }
+  return false;
+}
+
+/** 等待文本出现 */
+async function waitForText(page, text, timeout = 20000) {
+  try {
+    await page.waitForFunction(
+      (t) => document.body.innerText.includes(t), text, { timeout }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { launchApp, screenshot, sendMessage, waitForText, PROJECT_ROOT, ELECTRON_PATH };
