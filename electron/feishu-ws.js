@@ -64,6 +64,18 @@ function start(appId, appSecret, onMessage, onStatus, options = {}) {
         const chatType = data?.message?.chat_type || 'unknown';
         diag(`消息类型: ${msgType}, 会话类型: ${chatType}`);
 
+        // 附件类消息详细日志
+        if (msgType === 'image' || msgType === 'file' || msgType === 'media' || msgType === 'audio') {
+          const content = data?.message?.content || '{}';
+          try {
+            const parsed = JSON.parse(content);
+            if (msgType === 'image') diag(`附件详情: image_key=${parsed.image_key || 'N/A'}`);
+            if (msgType === 'file') diag(`附件详情: file_key=${parsed.file_key || 'N/A'}, file_name=${parsed.file_name || 'N/A'}`);
+            if (msgType === 'media') diag(`附件详情: file_key=${parsed.file_key || 'N/A'}, image_key=${parsed.image_key || 'N/A'}`);
+            if (msgType === 'audio') diag(`附件详情: file_key=${parsed.file_key || 'N/A'}`);
+          } catch {}
+        }
+
         if (messageHandler) {
           try {
             messageHandler(data);

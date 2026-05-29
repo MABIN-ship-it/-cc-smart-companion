@@ -480,9 +480,14 @@ export async function feishuSendImage(input) {
       return '图片上传失败: Electron环境未就绪，请重启应用。';
     }
 
+    // 本地文件路径先验证文件存在
+    if (!file_path.startsWith('data:image/')) {
+      const exists = await window.electronAPI.fileExists?.(file_path);
+      if (!exists) return `图片文件不存在: ${file_path}`;
+    }
+
     let uploadResult;
     if (file_path.startsWith('data:image/')) {
-      // 粘贴截图 → base64 → 主进程解码上传
       uploadResult = await window.electronAPI.feishuUploadImageBase64?.(file_path);
     } else {
       uploadResult = await window.electronAPI.feishuUploadImage?.(file_path);
@@ -581,6 +586,11 @@ export async function feishuDownloadResource(input) {
     }
     const result = await window.electronAPI.feishuDownloadResource(message_id, file_key, resourceType, file_name);
     if (!result?.success) return `下载失败: ${result?.error || '未知错误'}`;
+
+    // 验证文件落盘
+    const fileExists = await window.electronAPI.fileExists?.(result.filePath);
+    if (!fileExists) return `下载失败: 文件未能保存到磁盘 (${result.filePath})`;
+    if (result.fileSize === 0) return `下载的文件为空 (${result.fileName})`;
 
     let response = `文件已下载到: ${result.filePath}（${result.fileName}, ${(result.fileSize / 1024).toFixed(1)}KB）`;
     if (result.base64Preview) {

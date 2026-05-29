@@ -1487,6 +1487,10 @@ function extractXlsSheets(workbook) {
 // ====== 飞书资源下载（从消息中下载文件/图片）======
 
 ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, type, preferredFileName) => {
+  const MAX_RETRIES = 2;
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
   try {
     const token = await feishuGetToken();
     const resourceType = type === 'image' ? 'image' : 'file';
@@ -1526,11 +1530,9 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
           try { parsedName = decodeURIComponent(rfcMatch[1]); } catch {}
         }
         if (!parsedName) {
-          // 普通 filename="..." 或 filename=xxx
           const plainMatch = disposition.match(/filename="?([^";\r\n]+)"?/i);
           if (plainMatch) {
             const raw = plainMatch[1].trim();
-            // Node.js HTTP 头以 Latin-1 解析，若含中文需恢复 UTF-8 字节
             try {
               const latin1Bytes = Buffer.from(raw, 'latin1');
               const utf8Decoded = latin1Bytes.toString('utf8');
@@ -1540,7 +1542,6 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
             }
           }
         }
-        // 回退使用消息中的原始文件名（最可靠）
         if (!parsedName && preferredFileName) parsedName = preferredFileName;
         if (!parsedName) parsedName = `${fileKey}.bin`;
 
@@ -1587,7 +1588,6 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
         await workbook.xlsx.load(buffer);
         result.textContent = extractExcelSheets(workbook);
       } catch {
-        // .xls 旧格式用 SheetJS 原生读取（Node.js，无编码问题）
         if (ext === '.xls') {
           try {
             const wb = XLSX.read(buffer, { type: 'buffer' });
@@ -1601,8 +1601,16 @@ ipcMain.handle('feishu:downloadResource', async (_event, messageId, fileKey, typ
 
     return result;
   } catch (e) {
-    return { success: false, error: e.message };
+    lastError = e;
+    const retryable = ['timeout', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'socket', 'network', 'ENOTFOUND'];
+    if (attempt < MAX_RETRIES && retryable.some(p => (e.message || '').toLowerCase().includes(p.toLowerCase()))) {
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      continue;
+    }
+    break;
   }
+  }
+  return { success: false, error: lastError?.message || '下载失败' };
 });
 
 // ====== 飞书文件导入为云文档 ======
