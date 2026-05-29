@@ -11,7 +11,7 @@ import {
   addTable, listTableFields, addTableFields,
   getMyOpenId, setMyOpenId, checkPermissions, sendCreationNotification,
   readDocumentContent, extractFeishuDocUrls,
-  getDefaultReceiveContext,
+  getDefaultReceiveContext, getFeishuTenantDomain,
 } from './feishu';
 import { getWorkspaceContext } from './toolRegistry';
 
@@ -753,7 +753,62 @@ export async function feishuImportToCloudDoc(input) {
   }
 }
 
-// ─── 工具定义 ─────────────────────────────────────
+// ─── 工具：Excel转为多维表格 ────────────────────────
+
+export async function feishuConvertExcelToBitable(input) {
+  const { file_path, base_name, folder_token } = input || {};
+  if (!file_path) return '请提供Excel文件路径(file_path)。';
+
+  const resolvedPath = resolveFilePath(file_path);
+  const { parseExcelForBitable } = await import('./excelParser');
+
+  const parseResult = await parseExcelForBitable(resolvedPath);
+  if (!parseResult.success) return `Excel解析失败: ${parseResult.error}`;
+  if (parseResult.sheets.length === 0) return 'Excel文件中没有可读取的工作表。';
+
+  const baseName = base_name || resolvedPath.replace(/^.*[/\\]/, '').replace(/\.[^.]+$/, '');
+  let appToken;
+  try {
+    const baseResult = await createBase(baseName, folder_token);
+    appToken = baseResult.app?.app_token;
+    if (!appToken) return '创建多维表格失败：未获取到app_token。';
+  } catch (e) {
+    return `创建多维表格失败: ${e.message}`;
+  }
+
+  const results = [];
+  for (let i = 0; i < parseResult.sheets.length; i++) {
+    const sheet = parseResult.sheets[i];
+    const tableName = sheet.name || `Sheet${i + 1}`;
+
+    try {
+      const fieldsToCreate = sheet.fields.slice(0, 100);
+      const normalizedFields = normalizeFields(fieldsToCreate);
+      const tableResult = await addTable(appToken, tableName, normalizedFields);
+      const tableId = tableResult.table?.table_id;
+      if (!tableId) { results.push(`表"${tableName}": 创建失败`); continue; }
+
+      const recordsToWrite = sheet.records.slice(0, 5000);
+      if (recordsToWrite.length > 0) {
+        const batchResult = await batchAddBaseRecords(appToken, tableId, recordsToWrite);
+        results.push(`表"${tableName}": ${batchResult.inserted}/${batchResult.requested} 条记录`);
+      } else {
+        results.push(`表"${tableName}": 创建成功（无数据行）`);
+      }
+    } catch (e) {
+      results.push(`表"${tableName}": 失败 - ${e.message}`);
+    }
+  }
+
+  let tenantDomain;
+  try { tenantDomain = await getFeishuTenantDomain(); } catch { tenantDomain = 'bytedance'; }
+  const url = `https://${tenantDomain}.feishu.cn/base/${appToken}`;
+  sendCreationNotification('多维表格', baseName, url).catch(() => {});
+
+  let response = `Excel已转换为飞书多维表格！\n名称：${baseName}\n链接：${url}\n\n各表结果：\n${results.map(r => `- ${r}`).join('\n')}`;
+  if (parseResult.sheets.length > 1) response += `\n共 ${parseResult.sheets.length} 个工作表。`;
+  return response;
+}
 
 export const FEISHU_TOOLS = [
   {
@@ -927,6 +982,19 @@ export const FEISHU_TOOLS = [
       required: ['file_path'],
     },
   },
+  {
+    name: 'feishu_convert_excel',
+    description: '将本地Excel文件(.xlsx/.xls)转换为飞书多维表格，自动识别表头、字段类型和数据。当用户说"把Excel转为多维表格"、"导入这个表格到飞书"时调用。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Excel文件的本地路径' },
+        base_name: { type: 'string', description: '创建的多维表格名称（可选，默认用文件名）' },
+        folder_token: { type: 'string', description: '目标文件夹token（可选）' },
+      },
+      required: ['file_path'],
+    },
+  },
 ];
 
 export const FEISHU_EXECUTORS = {
@@ -944,4 +1012,5 @@ export const FEISHU_EXECUTORS = {
   feishu_read_document: feishuReadDocument,
   feishu_download_resource: feishuDownloadResource,
   feishu_import_to_cloud_doc: feishuImportToCloudDoc,
+  feishu_convert_excel: feishuConvertExcelToBitable,
 };
