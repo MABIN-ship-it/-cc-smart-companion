@@ -135,25 +135,44 @@ export async function addDocumentFromFile(filePath) {
     throw new Error('文件读取仅在Electron环境中可用');
   }
 
-  const result = await window.electronAPI.readFile(filePath);
+  const { readFile } = await import('./fileReader');
+  const result = await readFile(filePath);
   if (!result.success) {
     throw new Error(`读取文件失败: ${result.error}`);
   }
 
-  const fileName = filePath.split(/[\\/]/).pop();
-  const ext = fileName.split('.').pop()?.toLowerCase();
+  const fileName = result.filename;
+  const ext = result.ext;
 
-  let content = result.content;
+  let content = result.content || '';
 
-  // If content looks like binary/garbled (PDF, DOCX), use Python to extract
+  // 表格文件: 格式化为TSV文本（已由 fileReader 预处理）
+  if (result.type === 'spreadsheet' && result.sheets) {
+    content = result.sheets.map(sheet =>
+      `[工作表: ${sheet.name} | ${sheet.rows.length}行]\n` +
+      sheet.rows.slice(0, 200).map(row =>
+        (row || []).map(c => String(c ?? '')).join('\t')
+      ).join('\n')
+    ).join('\n\n');
+  }
+
+  // 图片文件: 记录元数据
+  if (result.type === 'image') {
+    content = `[图片文件: ${fileName}, 大小: ${((result.fileSize || 0) / 1024).toFixed(1)}KB]`;
+    if (result.base64) {
+      content += `\n[图片数据已加载，可用于发送到飞书]`;
+    }
+  }
+
+  // PDF/DOCX 使用 Python 提取（保留原有逻辑）
   if (['pdf', 'docx'].includes(ext)) {
     try {
-      content = await extractWithPython(filePath, ext);
+      const pyContent = await extractWithPython(filePath, ext);
+      if (pyContent && pyContent.trim().length > 0) {
+        content = pyContent;
+      }
     } catch (e) {
       console.warn('Python文本提取失败，使用原始读取:', e.message);
-      // 回退：保留原始内容（可能有部分可读文本），并在文档中标记
-      const note = `[注意：此PDF/DOCX文件未能通过Python提取文本（${e.message}），以下为原始二进制读取内容，可能不可读。文件已入库，可通过文件名搜索。]`;
-      content = note + '\n' + (content || '');
     }
   }
 

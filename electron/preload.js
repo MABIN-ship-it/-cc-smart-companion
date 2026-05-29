@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // File operations
   readFile: (filePath) => ipcRenderer.invoke('file:readFile', filePath),
+  readBinary: (filePath) => ipcRenderer.invoke('file:readBinary', filePath),
   writeFile: (filePath, content, append) => ipcRenderer.invoke('file:writeFile', filePath, content, append),
   listDir: (dirPath) => ipcRenderer.invoke('file:listDir', dirPath),
   deleteFile: (filePath) => ipcRenderer.invoke('file:deleteFile', filePath),

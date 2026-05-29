@@ -408,6 +408,19 @@ ipcMain.handle('file:readFile', async (event, filePath) => {
   }
 });
 
+// 二进制文件读取（供 ExcelJS / 图片解析等使用）
+ipcMain.handle('file:readBinary', async (_event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return { success: false, error: '文件不存在' };
+    const buffer = fs.readFileSync(filePath);
+    const MAX_SIZE = 50 * 1024 * 1024;
+    if (buffer.length > MAX_SIZE) return { success: false, error: `文件过大(${(buffer.length / 1024 / 1024).toFixed(1)}MB)，限制50MB以内` };
+    return { success: true, buffer: buffer.toString('base64'), size: buffer.length };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('file:writeFile', async (event, filePath, content, append) => {
   try {
     const dir = path.dirname(filePath);
