@@ -1272,7 +1272,7 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_import_to_cloud_doc',
-    description: '将已下载到本地的文件导入为飞书云文档（如将.xls/.xlsx导入为飞书电子表格，将.docx导入为飞书文档）。当用户要求"转为云文档"、"导入飞书"、"转换为在线文档"时调用。需要先通过feishu_download_resource下载文件，然后将返回的filePath传给此工具。',
+    description: '将已下载到本地的文件导入为飞书云文档（如将.xls/.xlsx导入为飞书电子表格，将.docx导入为飞书文档）。⚠️ 老xls文件的GBK/GB2312编码问题用此工具解决——飞书服务器自动处理编码转换，比你写Python解析强100倍。参数是file_path（本地路径），不是file_key。需要先通过feishu_download_resource下载文件拿到filePath。',
     input_schema: {
       type: 'object',
       properties: {

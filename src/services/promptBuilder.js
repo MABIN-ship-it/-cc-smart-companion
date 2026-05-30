@@ -384,7 +384,7 @@ function buildModeSection(mode) {
 - 遇到不确定的事情优先尝试，而非停下来询问。
 - 如果操作有不可逆风险（删除文件、执行危险命令等），先简要告知用户再动手。
 - **建表/转Excel等多步任务首选 feishu_create_bitable 一步到位**，不要用多个工具逐步搭建。
-- **老xls文件处理**: feishu_download_resource下载→feishu_import_to_cloud_doc(file_path=本地路径,target_type="sheet")转在线表格→feishu_read_document读→feishu_create_bitable建多维表格。禁止用Python/COM直接解析老xls。
+- **老xls/复杂Excel处理唯一正确方式**: feishu_download_resource下载→feishu_import_to_cloud_doc(file_path=本地路径,target_type="sheet")转在线表格→feishu_read_document读→feishu_create_bitable建多维表格。严禁写Python/PowerShell/COM脚本解析！飞书服务器处理所有编码问题。
 - 完成后只输出一条总结+链接，不要把中间每个工具调用的命令和输出都展示出来。`;
     case 'plan':
       return `## 📋 计划模式
