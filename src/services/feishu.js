@@ -641,6 +641,7 @@ export function dispatchFeishuMessage(data) {
 /**
  * 从 WebSocket 事件数据提取消息文本
  * SDK可能传递完整schema(含event包装)或去包装后的event对象，双路径兼容
+ * 对文件/图片/媒体类型返回文件名或类型标记，确保消息不被早期return丢弃
  */
 export function extractTextFromEvent(eventData) {
   try {
@@ -652,6 +653,10 @@ export function extractTextFromEvent(eventData) {
     if (parsed.elements) {
       return parsed.elements.map(e => e.text_run?.content || '').join('');
     }
+    // 非文本消息：返回文件/图片/媒体名，确保消息不被丢弃
+    if (parsed.file_name) return `[文件: ${parsed.file_name}]`;
+    if (parsed.file_key) return '[文件消息]';
+    if (parsed.image_key) return '[图片消息]';
     return '';
   } catch {
     return '';
