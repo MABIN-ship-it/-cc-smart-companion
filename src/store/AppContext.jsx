@@ -84,7 +84,12 @@ function appReducer(state, action) {
     case 'LOAD_SESSIONS': {
       const sessions = loadSessions();
       const lastId = localStorage.getItem('cc_active_session_id');
-      const activeSessionId = lastId && sessions.some(s => s.id === lastId) ? lastId : null;
+      let activeSessionId = lastId && sessions.some(s => s.id === lastId) ? lastId : null;
+      // 回退：没有保存过活跃会话时，用最近创建的会话
+      if (!activeSessionId && sessions.length > 0) {
+        const latest = sessions.reduce((a, b) => (a.updatedAt || a.createdAt) > (b.updatedAt || b.createdAt) ? a : b);
+        activeSessionId = latest.id;
+      }
       return { ...state, sessions, activeSessionId };
     }
     case 'NEW_SESSION': {
