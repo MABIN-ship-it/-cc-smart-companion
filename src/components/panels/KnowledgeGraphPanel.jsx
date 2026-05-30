@@ -147,14 +147,6 @@ export default function KnowledgeGraphPanel({ onClose, getKnowledgeSystem }) {
       <div className="kg-header">
         <h3>知识图谱</h3>
         <div className="kg-header-actions">
-          <button
-            onClick={refreshData}
-            style={{
-              background: 'none', border: 'none', color: '#888', cursor: 'pointer',
-              fontSize: 14, padding: '2px 6px', borderRadius: 4,
-            }}
-            title="刷新数据"
-          >🔄</button>
           <button className="kg-close-btn" onClick={onClose}>✕</button>
         </div>
       </div>

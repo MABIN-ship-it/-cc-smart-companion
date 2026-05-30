@@ -271,14 +271,8 @@ export default function MemoryPanel() {
               border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)',
               padding: 14, marginBottom: 4,
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-light)' }}>
-                  📌 你的当前状态
-                </div>
-                <span onClick={() => { setProfileFields(getAllFields()); }}
-                  style={{ cursor: 'pointer', fontSize: 11, color: 'var(--accent-light)', userSelect: 'none' }}>
-                  🔄 刷新
-                </span>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-light)', marginBottom: 8 }}>
+                📌 你的当前状态
               </div>
               {(profileFields['当前项目'] || profileFields['输出偏好'] || profileFields['决策规则']) ? (
                 <>
