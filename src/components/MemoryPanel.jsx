@@ -353,11 +353,16 @@ export default function MemoryPanel() {
                         style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5, cursor: 'pointer' }}
                         onClick={() => {
                           setEditingKey(key);
-                          setEditValue(Array.isArray(val) ? val.join('、') : String(val));
+                          const display = Array.isArray(val)
+                            ? (typeof val[0] === 'object' ? val.map(v => v.value || JSON.stringify(v)).join('、') : val.join('、'))
+                            : String(val);
+                          setEditValue(display);
                         }}
                         title="点击编辑"
                       >
-                        {Array.isArray(val) ? val.join('、') : String(val)}
+                        {Array.isArray(val)
+                          ? (typeof val[0] === 'object' ? val.map(v => v.value || JSON.stringify(v)).join('、') : val.join('、'))
+                          : String(val)}
                       </div>
                     )}
                   </div>
