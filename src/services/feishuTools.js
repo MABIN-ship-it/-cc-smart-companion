@@ -1067,9 +1067,12 @@ export async function feishuCreateBitable(input) {
     } catch {}
 
     // 4. 批量写数据（原生API，已验证可靠）
-    if (records && records.length > 0) {
-      const recs = records.map(r => ({ fields: r.fields || r }));
-      await batchAddBaseRecords(bt, tid, recs);
+    let recs = records;
+    if (typeof recs === 'string') { try { recs = JSON.parse(recs); } catch {} }
+    if (typeof fields === 'string') { try { fields = JSON.parse(fields); } catch {} }
+    if (recs && Array.isArray(recs) && recs.length > 0) {
+      const normalized = recs.map(r => ({ fields: r.fields || r }));
+      await batchAddBaseRecords(bt, tid, normalized);
     }
 
     // 5. 创建默认视图
