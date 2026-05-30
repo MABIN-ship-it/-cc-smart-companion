@@ -1,7 +1,8 @@
 const { app, BrowserWindow, ipcMain, shell, Menu, dialog, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { exec, execSync, spawn } = require('child_process');
+const os = require('os');
+const { exec, execFile, execSync, spawn } = require('child_process');
 const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
 let autoUpdater;
@@ -1178,6 +1179,47 @@ ipcMain.handle('feishu:status', () => {
 
 ipcMain.handle('feishu:disconnect', () => {
   return feishuWs.stop();
+});
+
+// ====== Feishu CLI 执行（主进程） ======
+const CC_DIR = path.join(os.homedir(), '.cc');
+const CLI_BIN = path.join(CC_DIR, 'node_modules', '@larksuite', 'cli', 'bin', 'lark-cli.exe');
+const CLI_VERSION = '1.0.44';
+const LOG_FILE = path.join(CC_DIR, 'cli-error.log');
+
+async function ensureCliInstalled() {
+  if (!fs.existsSync(CLI_BIN)) {
+    fs.mkdirSync(CC_DIR, { recursive: true });
+    await new Promise((resolve, reject) => {
+      execFile('npm', ['install', `@larksuite/cli@${CLI_VERSION}`, '--no-save', '--prefix', CC_DIR],
+        { cwd: CC_DIR }, (err) => { if (err) reject(err); else resolve(); });
+    });
+  }
+  return CLI_BIN;
+}
+
+ipcMain.handle('feishu:cli', async (_event, command) => {
+  try {
+    await ensureCliInstalled();
+    const args = typeof command === 'string' ? command.split(' ') : command;
+    const result = await new Promise((resolve) => {
+      execFile(CLI_BIN, args, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+        if (err) {
+          const errLog = `[${new Date().toISOString()}] ${args.join(' ')}\n  error: ${err.message}\n\n`;
+          try { fs.appendFileSync(LOG_FILE, errLog); } catch {}
+          return resolve({ success: false, error: err.message });
+        }
+        try {
+          resolve({ success: true, data: JSON.parse(stdout) });
+        } catch {
+          resolve({ success: true, text: stdout.slice(0, 5000) });
+        }
+      });
+    });
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 ipcMain.handle('feishu:getSession', async () => {

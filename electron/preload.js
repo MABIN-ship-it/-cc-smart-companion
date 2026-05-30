@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   feishuImportToCloudDoc: (filePath, targetType) => ipcRenderer.invoke('feishu:importToCloudDoc', filePath, targetType),
   feishuGetSession: () => ipcRenderer.invoke('feishu:getSession'),
   feishuRefreshSession: () => ipcRenderer.invoke('feishu:refreshSession'),
+  feishuCliCommand: (command) => ipcRenderer.invoke('feishu:cli', command),
   onFeishuMessage: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('feishu:message', handler);
