@@ -14,6 +14,7 @@ import {
   getDefaultReceiveContext, getFeishuTenantDomain,
 } from './feishu';
 import { getWorkspaceContext } from './toolRegistry';
+import { feishuCliCommand, executeCommandSequence } from './feishuCli';
 
 const FEISHU_BASE_URL = 'https://open.feishu.cn/open-apis';
 
@@ -1004,6 +1005,101 @@ export async function feishuCreateDashboard(input) {
   }
 }
 
+// ─── 新工具：CLI调度 ─────────────────────────
+
+export async function feishuCliExecute(input) {
+  const { command } = input || {};
+  if (!command) return '请提供 command 参数。';
+  try {
+    const result = await feishuCliCommand({ command });
+    if (result.success) {
+      const data = result.data || result.text || '';
+      return typeof data === 'string' ? data : JSON.stringify(data, null, 2).slice(0, 4000);
+    }
+    return `CLI执行失败: ${result.error}`;
+  } catch (e) {
+    return `CLI异常: ${e.message}`;
+  }
+}
+
+export async function feishuCreateBitable(input) {
+  const { description } = input || {};
+  if (!description) return '请描述你需要的表格结构和字段。';
+
+  try {
+    const name = description.split(/[,，、\n]/)[0].slice(0, 50).replace(/[建創]一个?|表[格單]|帮我|请[求你]?/g, '').trim() || '新建表格';
+
+    // 构造命令序列
+    const commands = [
+      `base +base-create --name "${name}"`,
+      `base +table-list --base-token {base_token}`,
+    ];
+
+    const result = await executeCommandSequence(commands);
+    if (!result.success) {
+      return `创建失败: ${result.error}`;
+    }
+
+    // 提取默认表的ID并用 +table-create 重建含字段的表
+    const tableListResult = result.results?.[1];
+    const tables = tableListResult?.result?.data?.tables || [];
+    const defaultTable = tables[0];
+    const oldTableId = defaultTable?.id;
+
+    // 用自然语言描述让AI构造字段JSON
+    const fieldsJson = await buildFieldsFromDescription(description);
+    const tableName = name + '数据表';
+
+    // 删除默认表，创建新表
+    let buildCmds = [];
+    if (oldTableId) {
+      buildCmds.push(`base +table-delete --base-token {base_token} --table-id ${oldTableId}`);
+    }
+    buildCmds.push(`base +table-create --base-token {base_token} --name "${tableName}" --fields '${fieldsJson}'`);
+
+    const buildResult = await executeCommandSequence(buildCmds);
+    const bt = result.baseToken || buildResult.baseToken;
+
+    // 创建视图
+    const viewCmd = `base +view-create --base-token {base_token} --table-id {table_id} --name "表格视图" --type grid`;
+    await executeCommandSequence([viewCmd]);
+
+    const url = `https://hcn22as87t3m.feishu.cn/base/${bt}`;
+    return `多维表格已创建！\n名称: ${name}\n链接: ${url}`;
+  } catch (e) {
+    return `创建失败: ${e.message}`;
+  }
+}
+
+function buildFieldsFromDescription(desc) {
+  // 从描述中提取关键词映射到字段类型
+  const keywordMap = [
+    { pattern: /电话|手机|tel|phone/i, type: 'text' },
+    { pattern: /邮箱|email|邮件|mail/i, type: 'text' },
+    { pattern: /日期|时间|date|time/i, type: 'datetime' },
+    { pattern: /金额|价格|费用|金额|price|amount|cost|money/i, type: 'number' },
+    { pattern: /进度|完成|progress|百分比|percent/i, type: 'number' },
+    { pattern: /状态|阶段|status|stage/i, type: 'select' },
+    { pattern: /负责人|人员|user|owner|assignee/i, type: 'user' },
+    { pattern: /附件|文件|file|attachment/i, type: 'attachment' },
+    { pattern: /链接|url|link|网址/i, type: 'text' },
+    { pattern: /备注|说明|描述|note|desc|remark/i, type: 'text' },
+  ];
+
+  const items = desc.split(/[,，、\n;；]+/).filter(s => s.trim().length > 1 && s.trim().length < 20);
+  const fields = items.map(item => {
+    const fname = item.replace(/[含包]有?|字段|列/g, '').trim();
+    if (!fname || fname.length > 20) return null;
+    const matched = keywordMap.find(k => k.pattern.test(fname));
+    return { field_name: fname, type: matched ? matched.type : 'text' };
+  }).filter(Boolean);
+
+  if (fields.length === 0) {
+    fields.push({ field_name: '名称', type: 'text' });
+  }
+  return JSON.stringify(fields);
+}
+
 export const FEISHU_TOOLS = [
   {
     name: 'feishu_send_message',
@@ -1177,45 +1273,6 @@ export const FEISHU_TOOLS = [
     },
   },
   {
-    name: 'feishu_convert_excel',
-    description: '将本地Excel文件(.xlsx/.xls)转换为飞书多维表格，自动识别表头、字段类型和数据。当用户说"把Excel转为多维表格"、"导入这个表格到飞书"时调用。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        file_path: { type: 'string', description: 'Excel文件的本地路径' },
-        base_name: { type: 'string', description: '创建的多维表格名称（可选，默认用文件名）' },
-        folder_token: { type: 'string', description: '目标文件夹token（可选）' },
-      },
-      required: ['file_path'],
-    },
-  },
-  {
-    name: 'feishu_create_views',
-    description: '为飞书多维表格的数据表创建视图（表格/看板/日历/甘特/画册）。不指定视图类型时会自动智能推荐。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        app_token: { type: 'string', description: '多维表格的app_token' },
-        table_id: { type: 'string', description: '数据表的table_id' },
-        view_types: { type: 'array', items: { type: 'string' }, description: '视图类型数组: grid/kanban/calendar/gantt/gallery' },
-        group_field: { type: 'string', description: '看板分组字段ID（可选）' },
-        date_field: { type: 'string', description: '日历日期字段ID（可选）' },
-      },
-      required: ['app_token', 'table_id'],
-    },
-  },
-  {
-    name: 'feishu_detect_scene',
-    description: '分析Excel文件内容，识别对应的业务场景（项目管理/客户管理/库存管理/HR花名册/财务管理/日程管理），并推荐字段和视图配置。用户说"看下这是什么表格"、"分析表格类型"时调用。',
-    input_schema: {
-      type: 'object',
-      properties: {
-        file_path: { type: 'string', description: '文件的本地路径' },
-      },
-      required: ['file_path'],
-    },
-  },
-  {
     name: 'feishu_create_dashboard',
     description: '为多维表格数据表自动创建仪表盘，包含统计卡片、图表等组件。当用户说"生成仪表盘"、"创建统计面板"时调用。',
     input_schema: {
@@ -1226,6 +1283,45 @@ export const FEISHU_TOOLS = [
         dashboard_name: { type: 'string', description: '仪表盘名称（可选，默认"数据概览"）' },
       },
       required: ['app_token', 'table_id'],
+    },
+  },
+  {
+    name: 'feishu_cli',
+    description: `飞书官方 CLI 工具。可操作多维表格/文档/日历/消息/知识库等全部飞书资源。
+常 用命令:
+  建多维表格: base +base-create --name "名称"
+  一键建表(含字段): base +table-create --base-token X --name "表名" --fields '[{"field_name":"字段","type":"text"}]'
+  列字段: base +field-list --base-token X --table-id X
+  加字段: base +field-create --base-token X --table-id X --json '{"field_name":"名","type":"text"}'
+  批量写: base +record-batch-create --base-token X --table-id X --json '[{"fields":{}}]'
+  搜索记录: base +record-search --base-token X --table-id X --json '{}'
+  建视图: base +view-create --base-token X --table-id X --name "名" --type grid
+  建仪表盘: base +dashboard-create --base-token X --name "名"
+  写文档(Markdown): docs +create --title "标题" --markdown "# 内容"
+  搜文档: docs +search --query "关键词" --as user
+  发消息: im +messages-send --receive-id-type open_id --receive-id ou_xxx --msg-type text --content '{"text":"消息"}'
+  通用API: api POST /open-apis/xxx --data '{}'
+字段类型(字符串): text number select datetime checkbox user attachment link formula lookup auto_number
+所有操作均用Bot身份。输出默认JSON。可用--help查看完整选项。`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'CLI命令(不含lark-cli前缀)，如 base +base-create --name "表格"' },
+      },
+      required: ['command'],
+    },
+  },
+  {
+    name: 'feishu_create_bitable',
+    description: `用自然语言描述需求，自动创建完整的飞书多维表格。
+会自动分析描述中的关键词(电话→text, 日期→datetime, 金额→number, 状态→select, 负责人→user等)，生成合适的字段和默认视图。
+用户说"建一个客户管理表"、"帮我建个项目管理表格"时调用。`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        description: { type: 'string', description: '表格需求自然语言描述，含名称和期望的字段' },
+      },
+      required: ['description'],
     },
   },
 ];
@@ -1245,8 +1341,6 @@ export const FEISHU_EXECUTORS = {
   feishu_read_document: feishuReadDocument,
   feishu_download_resource: feishuDownloadResource,
   feishu_import_to_cloud_doc: feishuImportToCloudDoc,
-  feishu_convert_excel: feishuConvertExcelToBitable,
-  feishu_create_views: feishuCreateViews,
-  feishu_detect_scene: feishuDetectBusinessScene,
-  feishu_create_dashboard: feishuCreateDashboard,
+  feishu_cli: feishuCliExecute,
+  feishu_create_bitable: feishuCreateBitable,
 };
