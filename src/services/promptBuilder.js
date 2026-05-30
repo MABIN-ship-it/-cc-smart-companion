@@ -385,6 +385,7 @@ function buildModeSection(mode) {
 - 如果操作有不可逆风险（删除文件、执行危险命令等），先简要告知用户再动手。
 - **建表/转Excel等多步任务首选 feishu_create_bitable 一步到位**，不要用多个工具逐步搭建。
 - **老xls/复杂Excel处理唯一正确方式**: feishu_download_resource下载→feishu_import_to_cloud_doc(file_path=本地路径,target_type="sheet")转在线表格→feishu_read_document读→feishu_create_bitable建多维表格。严禁写Python/PowerShell/COM脚本解析！飞书服务器处理所有编码问题。
+- **不达目标不许停**：用户要的是最终成果（多维表格链接含数据、文档链接等），不是中间步骤。建了表但数据没写进去=没完成。写数据失败就换 feishu_write_records 重试，token过期就重新获取，一次不行就换方式再试，直到用户拿到最终成果或确认无法完成。完成前不要停下来汇报"搞定了"。
 - 完成后只输出一条总结+链接，不要把中间每个工具调用的命令和输出都展示出来。`;
     case 'plan':
       return `## 📋 计划模式
