@@ -95,30 +95,29 @@ function similarContent(a, b) {
 export async function applyForgettingRules() {
   const memories = loadMemories();
   const now = Date.now();
-  const cleaned = memories.filter(m => {
-    if (m.expiresAt && now > m.expiresAt) {
-      if (m.importance >= 5) {
-        m.level = 'cold';
-        m.expiresAt = now + 90 * 24 * 3600 * 1000;
-        return true;
-      }
-      return false;
-    }
-    return true;
-  });
 
-  // Demote old memories
-  for (const m of cleaned) {
+  for (const m of memories) {
     const age = now - m.createdAt;
-    if (age > 30 * 24 * 3600 * 1000 && m.level === 'warm' && m.importance < 5) {
+
+    // 冷节点归档：90天→归档，永不删除
+    if (age > 90 * 24 * 3600 * 1000 && (m.level === 'cold' || (m.lastAccessed && now - m.lastAccessed > 90 * 24 * 3600 * 1000))) {
+      m.level = 'archived';
+      continue;
+    }
+
+    // 30天warm→降级cold
+    if (age > 30 * 24 * 3600 * 1000 && m.level === 'warm' && (m.importance || 3) < 5) {
       m.level = 'cold';
     }
-    if (age > 90 * 24 * 3600 * 1000 && m.level === 'cold' && m.importance < 7) {
-      m._toDelete = true;
+
+    // 过期但重要→降级不删除
+    if (m.expiresAt && now > m.expiresAt) {
+      m.level = (m.importance || 3) >= 5 ? 'cold' : 'archived';
+      if (m.level === 'cold') m.expiresAt = now + 90 * 24 * 3600 * 1000;
     }
   }
 
-  const result = cleaned.filter(m => !m._toDelete);
+  const result = memories.filter(m => m.level !== '_deleted');
   saveMemories(result);
   return result;
 }
