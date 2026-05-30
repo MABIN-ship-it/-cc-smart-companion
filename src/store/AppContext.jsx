@@ -83,14 +83,18 @@ function appReducer(state, action) {
       return { ...state, sessionStart: Date.now() };
     case 'LOAD_SESSIONS': {
       const sessions = loadSessions();
-      return { ...state, sessions };
+      const lastId = localStorage.getItem('cc_active_session_id');
+      const activeSessionId = lastId && sessions.some(s => s.id === lastId) ? lastId : null;
+      return { ...state, sessions, activeSessionId };
     }
     case 'NEW_SESSION': {
       const firstMsg = action.payload || '新对话';
       let sessions = [...state.sessions, createSessionObj(firstMsg, [])];
       sessions = trimSessions(sessions);
       saveSessions(sessions);
-      return { ...state, sessions, activeSessionId: sessions[sessions.length - 1].id };
+      const newId = sessions[sessions.length - 1].id;
+      localStorage.setItem('cc_active_session_id', newId);
+      return { ...state, sessions, activeSessionId: newId };
     }
     case 'START_NEW_CHAT': {
       let sessions = state.sessions;
@@ -98,18 +102,19 @@ function appReducer(state, action) {
         sessions = updateSession(sessions, state.activeSessionId, state.messages);
       }
       saveSessions(sessions);
+      localStorage.removeItem('cc_active_session_id');
       return { ...state, sessions, messages: [], activeSessionId: null };
     }
     case 'SWITCH_SESSION': {
       const targetId = action.payload;
       const target = state.sessions.find(s => s.id === targetId);
       if (!target) return state;
-      // Save current messages to old session
       let sessions = state.sessions;
       if (state.activeSessionId && state.messages.length > 0) {
         sessions = updateSession(sessions, state.activeSessionId, state.messages);
       }
       saveSessions(sessions);
+      localStorage.setItem('cc_active_session_id', targetId);
       return {
         ...state,
         sessions,
