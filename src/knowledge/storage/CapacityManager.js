@@ -14,6 +14,7 @@ const PINNED_PROFILE_KEYS = new Set(['name', 'preferred_name']);
 
 /** 淘汰优先级排序（数值越小越先被淘汰） */
 const EVICTION_PRIORITY = {
+  archived: -10,          // 归档数据最优先淘汰（仅空间不足时）
   cold_memory: 0,
   old_lesson: 10,
   old_observation: 20,
