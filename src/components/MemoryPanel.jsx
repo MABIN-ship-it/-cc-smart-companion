@@ -265,6 +265,38 @@ export default function MemoryPanel() {
       <div style={{ flex: 1, padding: 16, overflowY: 'auto' }}>
         {activeTab === 'profile' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {/* ─── 本周摘要 ─── */}
+            {(profileFields['当前项目'] || profileFields['输出偏好'] || profileFields['决策规则']) && (
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(100,100,255,0.08), rgba(100,200,255,0.05))',
+                border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)',
+                padding: 14, marginBottom: 4,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--accent-light)' }}>
+                  📌 你的当前状态
+                </div>
+                {profileFields['当前项目'] && (
+                  <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--text-main)' }}>
+                    🔍 主要关注：{Array.isArray(profileFields['当前项目']) ? profileFields['当前项目'].join('、') : profileFields['当前项目']}
+                  </div>
+                )}
+                {profileFields['输出偏好'] && (
+                  <div style={{ fontSize: 12, marginBottom: 4, color: 'var(--text-main)' }}>
+                    📝 输出偏好：{Array.isArray(profileFields['输出偏好']) ? profileFields['输出偏好'].join('、') : profileFields['输出偏好']}
+                  </div>
+                )}
+                {profileFields['决策规则'] && Array.isArray(profileFields['决策规则']) && profileFields['决策规则'].length > 0 && (
+                  <div style={{ fontSize: 12, color: 'var(--text-main)' }}>
+                    ⚡ 你的规则：
+                    {profileFields['决策规则'].slice(0, 5).map((r, i) => (
+                      <div key={i} style={{ marginLeft: 12, marginTop: 2, fontSize: 11, color: 'var(--text-muted)' }}>
+                        • {r.value}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
               CC了解到的关于你的信息（自动提取 + 可手动编辑）：
             </div>
