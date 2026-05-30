@@ -1094,6 +1094,30 @@ export async function feishuCreateBitable(input) {
   }
 }
 
+// ─── 工具：批量写记录到已有表 ────────────────
+
+export async function feishuWriteRecords(input) {
+  const { app_token, table_id, records } = input || {};
+  if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+  if (!records) return '请提供 records 数组';
+
+  try {
+    let recs = records;
+    if (typeof recs === 'string') { try { recs = JSON.parse(recs); } catch {} }
+    if (!Array.isArray(recs) || recs.length === 0) return 'records 格式错误，需要数组';
+
+    const normalized = recs.map(r => ({ fields: r.fields || r }));
+    const result = await batchAddBaseRecords(app_token, table_id, normalized);
+    if (result.inserted === 0) {
+      const err = result.errors?.join('; ') || '未知错误';
+      return `写入失败：${result.requested}条请求，0条成功。错误: ${err}`;
+    }
+    return `✅ ${result.inserted}/${result.requested} 条记录写入成功`;
+  } catch (e) {
+    return `写入异常: ${e.message}`;
+  }
+}
+
 function buildFieldsFromDescription(desc) {
   // 从描述中提取关键词映射到字段类型
   const keywordMap = [
@@ -1304,6 +1328,19 @@ export const FEISHU_TOOLS = [
     },
   },
   {
+    name: 'feishu_write_records',
+    description: '向已有飞书多维表格批量写入记录。建完表后数据写不进去时用这个，别再逐条写或用CLI。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        app_token: { type: 'string', description: '多维表格app_token' },
+        table_id: { type: 'string', description: '数据表table_id' },
+        records: { type: 'array', items: { type: 'object' }, description: '记录数组 [{fields:{字段名:值}}]' },
+      },
+      required: ['app_token', 'table_id', 'records'],
+    },
+  },
+  {
     name: 'feishu_cli',
     description: `飞书官方 CLI 工具。可操作多维表格/文档/日历/消息/知识库等全部飞书资源。
 【硬规则-必须遵守】
@@ -1369,4 +1406,5 @@ export const FEISHU_EXECUTORS = {
   feishu_import_to_cloud_doc: feishuImportToCloudDoc,
   feishu_cli: feishuCliExecute,
   feishu_create_bitable: feishuCreateBitable,
+  feishu_write_records: feishuWriteRecords,
 };
