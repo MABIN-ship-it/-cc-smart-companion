@@ -263,6 +263,64 @@ export function extractProfileDiff(userMsg, aiResp) {
     if (hobbies.length > 0) diff.append['兴趣'] = hobbies;
   }
 
+  // ── 行为层：当前主题（最近对话高频词） ──
+  const topicPatterns = [/在(?:做|搞|弄|跟进?|处理)(.{2,15}?)(?:项目|方案|改造|报价|统计|排班|表)/g,
+    /(?:项目|方案|改造|报价|统计|排班|报表)[：:\s]*(.{2,15}?)(?:，|。|\s|$)/g];
+  for (const tp of topicPatterns) {
+    let m;
+    while ((m = tp.exec(text)) !== null) {
+      const topic = m[1] ? (m[1] + (m[0].includes(m[1]) ? '' : '')) : m[0].replace(/在(?:做|搞|弄|跟进?|处理)/,'').trim();
+      if (topic.length >= 2 && topic.length <= 20 && !topic.includes('什么')) {
+        if (!diff.append['当前项目']) diff.append['当前项目'] = [];
+        if (!diff.append['当前项目'].includes(topic)) diff.append['当前项目'].push(topic);
+      }
+    }
+  }
+
+  // ── 行为层：输出偏好格式 ──
+  const formatPrefer = [];
+  if (/列表|列出来|清单|列一下|逐条/.test(userText)) formatPrefer.push('列表');
+  if (/表格|对比|Excel|表[格单]/.test(userText)) formatPrefer.push('表格');
+  if (/简短|简洁|短一点|少说|浓缩/.test(userText)) formatPrefer.push('简短回复');
+  if (/详细|展开|多说|具体|长一点/.test(userText)) formatPrefer.push('详细回复');
+  if (/大段[文字话]/.test(userText) && /不喜欢|讨厌|不要|别/.test(userText)) formatPrefer.push('讨厌大段文字');
+  if (formatPrefer.length > 0) diff.append['输出偏好'] = formatPrefer;
+
+  // ── 决策层：正则抓明确句式 ──
+  const rules = [];
+
+  // 判断标准：必须/不能/超过
+  for (const re of [/必须(.{2,30}?)(?:[，。,\s]|$)/g, /不能(.{2,30}?)(?:[，。,\s]|$)/g, /不许(.{2,30}?)(?:[，。,\s]|$)/g, /不准(.{2,30}?)(?:[，。,\s]|$)/g, /别(.{2,30}?)(?:[，。,\s]|$)/g]) {
+    let m;
+    while ((m = re.exec(userText)) !== null) {
+      const v = m[1].trim();
+      if (v.length >= 2 && v.length <= 25) rules.push({ type: '规则', value: (m[0].startsWith('别') ? '别' : m[0].slice(0,2)) + v, negative: /不能|不许|不准|别/.test(m[0]) });
+    }
+  }
+
+  // 优先级规则：先X再Y / X比Y重要
+  const prioRe = /先(.{2,15}?)再(.{2,15}?)(?:[，。,\s]|$)/g;
+  let pm;
+  while ((pm = prioRe.exec(userText)) !== null) {
+    rules.push({ type: '优先级', value: `先${pm[1].trim()}再${pm[2].trim()}` });
+  }
+  const impRe = /(.{2,10}?)比(.{2,10}?)重要/g;
+  let im;
+  while ((im = impRe.exec(userText)) !== null) {
+    rules.push({ type: '优先级', value: `${im[1].trim()}比${im[2].trim()}重要` });
+  }
+
+  // 风险敏感点：小心/注意/别忘了
+  for (const re of [/小心(.{2,30}?)(?:[，。,\s]|$)/g, /注意(.{2,30}?)(?:[，。,\s]|$)/g, /别忘了(.{2,30}?)(?:[，。,\s]|$)/g]) {
+    let m;
+    while ((m = re.exec(userText)) !== null) {
+      const v = m[1].trim();
+      if (v.length >= 2 && v.length <= 25) rules.push({ type: '提醒', value: v });
+    }
+  }
+
+  if (rules.length > 0) diff.add['决策规则'] = rules;
+
   // 清理空分类
   if (Object.keys(diff.add).length === 0) delete diff.add;
   if (Object.keys(diff.append).length === 0) delete diff.append;
@@ -284,13 +342,43 @@ export function getProfileContext() {
   if (keys.length === 0) return '';
 
   const lines = ['## 用户画像'];
-  for (const key of keys) {
+
+  // 基础字段优先
+  const basicKeys = keys.filter(k => !['当前项目','输出偏好','决策规则'].includes(k));
+  for (const key of basicKeys) {
     const val = fields[key];
     if (Array.isArray(val)) {
-      lines.push(`- ${key}：${val.join('、')}`);
+      if (val.length > 0 && typeof val[0] === 'object') {
+        // 对象数组（如决策规则）
+        lines.push(`- ${key}：`);
+        val.forEach(v => lines.push(`  • ${v.value || JSON.stringify(v)}`));
+      } else {
+        lines.push(`- ${key}：${val.join('、')}`);
+      }
     } else {
       lines.push(`- ${key}：${val}`);
     }
   }
+
+  // 行为层字段（简化展示）
+  for (const key of ['当前项目','输出偏好']) {
+    const val = fields[key];
+    if (val) {
+      const text = Array.isArray(val) ? val.join('、') : val;
+      lines.push(`- ${key}：${text}`);
+    }
+  }
+
+  // 决策规则
+  const rules = fields['决策规则'];
+  if (rules && Array.isArray(rules)) {
+    lines.push('\n⚡ 用户规则：');
+    const negRules = rules.filter(r => r.negative);
+    const posRules = rules.filter(r => !r.negative);
+    for (const r of [...negRules, ...posRules]) {
+      lines.push(`- ${r.value}`);
+    }
+  }
+
   return lines.join('\n');
 }
