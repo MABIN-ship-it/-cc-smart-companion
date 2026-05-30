@@ -197,18 +197,26 @@ feishuTools.js → feishu.js → feishuApi() → 飞书开放平台 API
 
 ## 十、已知问题和修复
 
-### 2026-05-30
-1. **三个致命飞书 Bug 的根因** — 运行版 `resources/app/electron/` 的后端文件是旧版（无飞书 IPC handlers），前端 dist 已更新但后端未同步。修复：deploy.bat 同步所有 electron/ 文件。
-2. **E2E 测试卡在引导界面** — 首次运行时无 `cc_onboarding_done` localStorage 键。修复：测试自动设置该键并 reload。
-3. **Three.js Canvas 遮挡点击** — 3D 角色场景覆盖 UI。修复：使用 `page.evaluate()` 执行 JS 点击。
-4. **输入框选择器错误** — InputBar 使用 `<input>` 不是 `<textarea>`。正确选择器：`input:not([type])`。
-5. **Playwright electron.launch() 不兼容** — CC 使用自定义 electron/main.js 入口。修复：使用 `chromium.connectOverCDP()` 连接。
+### 2026-05-30（多维表格全链路修复）
+
+| # | 问题 | 根因 | 修复文件 | 修复方式 |
+|---|------|------|---------|---------|
+| 1 | 飞书消息收不到 | 运行版 electron/ 未同步 | deploy.bat | 同步 main.js/preload.js/feishu-ws.js |
+| 2 | 飞书文件消息被丢弃 | `extractTextFromEvent` 对文件返回空字符串 → ChatInterface `if(!text)return` 跳过 | feishu.js L651-655 | 对 file/image 类型返回 `[文件: xxx]` |
+| 3 | 退出重进飞书消息开新话题 | `initialState` 的 `activeSessionId` 和 `messages` 都是空 | AppContext.jsx | 启动时预加载会话+消息到 initialState |
+| 4 | 多维表格建了但数据写不进去 | ① `data.table.table_id` 路径错误（应为 `data.table_id`）② 日期字符串飞书拒收（需毫秒时间戳）③ `wroteCount` 用 `records?.length` 判断，records 是字符串时永远>0 | feishuTools.js L1054, feishu.js L407 | 修正路径+日期自动转时间戳+wroteCount 用实际返回数 |
+| 5 | CC 建完表后瞎试写数据 | 没有可靠的批量写工具，CLI的`+record-batch-create`在Windows下有JSON引号转义问题 | feishuTools.js | 新增 `feishu_write_records` 工具，走 `batchAddBaseRecords` |
+| 6 | CLI 的 `+record-batch-create` 永远写不进去 | Windows命令行JSON引号转义无解 | main.js L1201 | 拦截此命令走原生API `feishuApiRaw` |
+| 7 | CC 建表时展示一堵墙的工具调用 | 工具粒度太细（下载→解析→建库→建表→加字段→写数据→建视图），每步一个卡片 | promptBuilder.js + feishuTools.js | 禁用 `feishu_base_operation` 写操作，强制走 `feishu_create_bitable` 一步到位 |
+| 8 | CC 写Python/PowerShell解析老xls | AI 固有行为模式，提示词难以约束 | promptBuilder.js L387 | execute prompt 加"老xls走导入云文档，严禁写脚本" |
+| 9 | CC 数据没写进去就停了 | 没有"不达目标不许停"约束 | promptBuilder.js L388 | execute prompt 加"不达目标不许停"规则 |
+| 10 | `feishu_cli` 命令前缀缺失 | AI 写 `table +xxx` 而非 `base +xxx` | main.js L1206 | 自动纠正：`/^(table|record|field)\s/ → 'base ' + cmd` |
 
 ### 2026-05-29
-6. **计划模式转执行后反复要求审批** — 添加了计划模式与执行模式铁律
-7. **思考过程输出全英文** — promptBuilder 添加了中文思考指令
-8. **文件生成工具返回成功但文件不存在** — 添加了文件存在性验证
-9. **用户画像垃圾数据** — userProfile.js 添加了校验
+11. **计划模式转执行后反复要求审批** — 添加了计划模式与执行模式铁律
+12. **思考过程输出全英文** — promptBuilder 添加了中文思考指令
+13. **文件生成工具返回成功但文件不存在** — 添加了文件存在性验证
+14. **用户画像垃圾数据** — userProfile.js 添加了校验
 
 ---
 
