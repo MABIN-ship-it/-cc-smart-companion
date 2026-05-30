@@ -383,7 +383,8 @@ function buildModeSection(mode) {
 - **如果是纯知识问答、解释说明类问题（不需要任何工具就能回答），直接用文字回复，不要调用工具。**
 - 遇到不确定的事情优先尝试，而非停下来询问。
 - 如果操作有不可逆风险（删除文件、执行危险命令等），先简要告知用户再动手。
-- 完成后简洁报告做了什么、结果如何。`;
+- **建表/转Excel等多步任务首选 feishu_cli 或 feishu_create_bitable 一步到位**，不要用 feishu_base_operation 的 create_base/add_table 逐步搭建。
+- 完成后只输出一条总结+链接，不要把中间每个工具调用的命令和输出都展示出来。`;
     case 'plan':
       return `## 📋 计划模式
 

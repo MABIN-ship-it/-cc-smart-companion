@@ -1140,19 +1140,14 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_base_operation',
-    description: '操作飞书多维表格：新建表格、管理字段、搜索/添加/批量添加/更新记录。支持字段类型：text(文本)、number(数字)、select(单选)、date(日期)、checkbox(复选框)、url(链接)、email(邮箱)、phone(电话)、currency(货币)、progress(进度)、attachment(附件)、rating(评分)、user(用户)、location(位置)等。',
+    description: '查看飞书多维表格（只读诊断）。创建/建表/加字段/批量写数据等写操作请用 feishu_cli 或 feishu_create_bitable。',
     input_schema: {
       type: 'object',
       properties: {
-        operation: { type: 'string', description: '操作类型：create_base(创建多维表格) / add_table(新建数据表+字段) / list_tables(查看表列表) / list_fields(查看字段) / add_fields(给已有表添加字段) / search(搜索记录) / add_record(添加单条记录) / add_records(批量添加记录) / update_record(更新记录)' },
-        name: { type: 'string', description: '新建多维表格时的名称（create_base时用）' },
-        table_name: { type: 'string', description: '新建数据表的名称（add_table时用）' },
-        folder_token: { type: 'string', description: '新建时的文件夹token（可选）' },
+        operation: { type: 'string', description: '操作类型：list_tables(查看表列表) / list_fields(查看字段) / search(搜索记录) / add_record(添加单条记录) / update_record(更新记录)。注意：建表/加字段/批量写请用feishu_cli' },
         app_token: { type: 'string', description: '多维表格的app_token' },
         table_id: { type: 'string', description: '数据表的table_id' },
-        fields: { type: 'array', items: { type: 'object' }, description: '字段数组，每项{ field_name: "字段名", type: "text/number/email等" }。add_table和add_fields时使用' },
-        record: { type: 'object', description: '单条记录的fields对象，字段名须与表中字段一致（add_record/update_record时用）' },
-        records: { type: 'array', items: { type: 'object' }, description: '批量记录数组，每项{ fields: {...} }（add_records时用）' },
+        record: { type: 'object', description: '单条记录的fields对象（add_record/update_record时用）' },
       },
       required: ['operation'],
     },
@@ -1288,7 +1283,13 @@ export const FEISHU_TOOLS = [
   {
     name: 'feishu_cli',
     description: `飞书官方 CLI 工具。可操作多维表格/文档/日历/消息/知识库等全部飞书资源。
-常 用命令:
+【硬规则-必须遵守】
+1. 所有多维表格命令以 base 开头，禁止写成 table/field/record/view
+2. +record-batch-create 的 --json 必须用 {"records":[...]} 格式
+3. 建表用 base +table-create --fields 一步创建表+字段
+4. 完成任务后只输出总结+链接，不逐条展示中间命令输出
+
+常用命令:
   建多维表格: base +base-create --name "名称"
   一键建表(含字段): base +table-create --base-token X --name "表名" --fields '[{"field_name":"字段","type":"text"}]'
   列字段: base +field-list --base-token X --table-id X

@@ -1201,7 +1201,10 @@ async function ensureCliInstalled() {
 ipcMain.handle('feishu:cli', async (_event, command) => {
   try {
     await ensureCliInstalled();
-    const args = typeof command === 'string' ? command.split(' ') : command;
+    let cmd = typeof command === 'string' ? command : command.join(' ');
+    // 命令纠正：缺失 base 前缀时自动补充
+    if (/^(table|record|field|view|dashboard|form)\s/.test(cmd)) cmd = 'base ' + cmd;
+    const args = cmd.split(' ');
     const result = await new Promise((resolve) => {
       execFile(CLI_BIN, args, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
