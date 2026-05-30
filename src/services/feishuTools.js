@@ -1051,7 +1051,7 @@ export async function feishuCreateBitable(input) {
       const tableRes = await feishuApi('POST', `/bitable/v1/apps/${bt}/tables`, {
         table: { name: tableName, fields: normalizedFields },
       });
-      tid = tableRes?.data?.table?.table_id;
+      tid = tableRes?.data?.table?.table_id || tableRes?.data?.table_id;
     } catch {}
     if (!tid) return `创建数据表失败。多维表格已建: https://hcn22as87t3m.feishu.cn/base/${bt}`;
 
