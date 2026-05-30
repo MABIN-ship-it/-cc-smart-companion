@@ -1198,13 +1198,71 @@ async function ensureCliInstalled() {
   return CLI_BIN;
 }
 
+function parseCliArgs(str) {
+  const args = []; let cur = ''; let inQ = false, qc = '';
+  for (const ch of str) {
+    if (inQ) { if (ch === qc) inQ = false; else cur += ch; }
+    else if (ch === '"' || ch === "'") { inQ = true; qc = ch; }
+    else if (ch === ' ') { if (cur) { args.push(cur); cur = ''; } }
+    else cur += ch;
+  }
+  if (cur) args.push(cur);
+  return args;
+}
+
 ipcMain.handle('feishu:cli', async (_event, command) => {
   try {
     await ensureCliInstalled();
-    let cmd = typeof command === 'string' ? command : command.join(' ');
-    // 命令纠正：缺失 base 前缀时自动补充
+    // 数组直接用作参数，字符串才需要解析
+    const isArray = Array.isArray(command);
+    let cmd = isArray ? command.join(' ') : command;
     if (/^(table|record|field|view|dashboard|form)\s/.test(cmd)) cmd = 'base ' + cmd;
-    const args = cmd.split(' ');
+
+    // +record-batch-create 走原生API
+    if (cmd.includes('+record-batch-create')) {
+      const args = isArray ? command : parseCliArgs(cmd);
+      const baseToken = args[args.indexOf('--base-token') + 1];
+      const tableId = args[args.indexOf('--table-id') + 1];
+      const jsonIdx = args.indexOf('--json');
+      if (!baseToken || !tableId || jsonIdx < 0) return { success: false, error: '缺少参数' };
+      let jsonStr = args[jsonIdx + 1];
+      // 读文件
+      if (jsonStr && jsonStr.startsWith('@')) {
+        try { jsonStr = fs.readFileSync(jsonStr.slice(1), 'utf-8'); } catch {}
+      }
+      let records;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.records) {
+          records = parsed.records;
+        } else if (parsed.fields && parsed.rows) {
+          records = parsed.rows.map(row => {
+            const fields = {};
+            parsed.fields.forEach((f, i) => { fields[f] = row[i] || ''; });
+            return { fields };
+          });
+        } else {
+          return { success: false, error: 'JSON格式错误，需要{records:[...]}或{fields:[...],rows:[...]}' };
+        }
+      } catch(e) { return { success: false, error: 'JSON解析失败: '+e.message }; }
+      try {
+        const token = await feishuGetToken();
+        const apiRes = await feishuApiRaw(token, 'POST', `/bitable/v1/apps/${baseToken}/tables/${tableId}/records/batch_create`, { records });
+        return { success: true, data: apiRes };
+      } catch(e) { return { success: false, error: e.message }; }
+    }
+
+    // 处理 --json 参数：写入临时文件避免命令行转义
+    let args = parseCliArgs(cmd);
+    const jsonIdx = args.indexOf('--json');
+    if (jsonIdx >= 0 && jsonIdx + 1 < args.length) {
+      const jsonFile = path.join(os.tmpdir(), 'cc_cli_' + Date.now() + '.json');
+      try {
+        fs.writeFileSync(jsonFile, args[jsonIdx + 1]);
+        args[jsonIdx + 1] = '@' + jsonFile;
+      } catch {}
+    }
+
     const result = await new Promise((resolve) => {
       execFile(CLI_BIN, args, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
@@ -1289,6 +1347,26 @@ async function feishuGetToken() {
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error('获取token超时')); });
     req.write(body);
+    req.end();
+  });
+}
+
+// 原生API调用
+function feishuApiRaw(token, method, path, body) {
+  return new Promise((resolve, reject) => {
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const req = https.request({
+      hostname: 'open.feishu.cn', path, method,
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json; charset=utf-8', ...(bodyStr ? {'Content-Length': Buffer.byteLength(bodyStr)} : {}) },
+      timeout: 30000,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({code:-1,msg:data}); } });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('API超时')); });
+    if (bodyStr) req.write(bodyStr);
     req.end();
   });
 }
