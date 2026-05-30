@@ -1153,43 +1153,19 @@ async function saveFeishuSession(sessionId, context) {
   } catch {}
 }
 
-// ====== Feishu WebSocket 连接配置 ======
-
 ipcMain.handle('feishu:configure', async (_event, appId, appSecret) => {
   try {
-    // 先建立 WebSocket 连接（会话管理不阻塞主流程）
     const result = feishuWs.start(appId, appSecret, (data) => {
-      // 消息回调：第一时间转发，会话管理异步处理
+      // 接收到飞书消息事件，转发到渲染进程
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('feishu:message', data);
       }
-      // 会话持久化放最后，不阻塞消息
-      try {
-        const session = loadFeishuSession();
-        if (session) {
-          data._feishuSessionId = session.sessionId;
-          session.updatedAt = Date.now();
-          fs.writeFile(FEISHU_SESSION_PATH, JSON.stringify(session), 'utf-8', () => {});
-        }
-      } catch {}
     }, (status) => {
+      // 推送WS状态变更到渲染进程
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('feishu:statusChange', status);
       }
     });
-
-    // 会话初始化（WebSocket 已连接后再处理）
-    try {
-      const existingSession = loadFeishuSession();
-      const sessionId = existingSession?.sessionId || generateSessionId();
-      if (!existingSession) {
-        fs.writeFile(FEISHU_SESSION_PATH, JSON.stringify({
-          sessionId, context: { appId }, createdAt: Date.now(), updatedAt: Date.now(),
-        }), 'utf-8', () => {});
-      }
-      result.sessionId = sessionId;
-    } catch {}
-
     return result;
   } catch (e) {
     return { success: false, error: e.message };
