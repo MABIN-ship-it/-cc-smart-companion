@@ -1023,49 +1023,61 @@ export async function feishuCliExecute(input) {
 }
 
 export async function feishuCreateBitable(input) {
-  const { description } = input || {};
-  if (!description) return '请描述你需要的表格结构和字段。';
+  const { name, description, fields, records } = input || {};
+  if (!name && !description) return '请提供表格名称(name)或描述(description)。';
 
   try {
-    const name = description.split(/[,，、\n]/)[0].slice(0, 50).replace(/[建創]一个?|表[格單]|帮我|请[求你]?/g, '').trim() || '新建表格';
+    const tableName = name || (description || '').split(/[,，、\n]/)[0].slice(0, 50).replace(/[建創]一个?|表[格單]|帮我|请[求你]?/g, '').trim() || '数据表';
 
-    // 构造命令序列
-    const commands = [
-      `base +base-create --name "${name}"`,
-      `base +table-list --base-token {base_token}`,
-    ];
+    // 1. 建多维表格（CLI，纯字符串参数稳定）
+    let bt;
+    try {
+      const r = await feishuCliCommand({ command: ['base', '+base-create', '--name', tableName] });
+      bt = (r.data?.data || r.data)?.base?.base_token;
+    } catch {}
+    if (!bt) {
+      // 回退：原生API建表
+      const r = await createBase(tableName);
+      bt = r?.app?.app_token || r?.data?.app?.app_token;
+    }
+    if (!bt) return '创建多维表格失败，请重试。';
 
-    const result = await executeCommandSequence(commands);
-    if (!result.success) {
-      return `创建失败: ${result.error}`;
+    // 2. 原生API建表+字段（不走CLI，JSON可靠性100%）
+    const fieldDefs = fields || buildFieldsFromDescription(description || name || '');
+    const normalizedFields = normalizeFields(fieldDefs);
+
+    let tid;
+    try {
+      const tableRes = await feishuApi('POST', `/bitable/v1/apps/${bt}/tables`, {
+        table: { name: tableName, fields: normalizedFields },
+      });
+      tid = tableRes?.data?.table?.table_id;
+    } catch {}
+    if (!tid) return `创建数据表失败。多维表格已建: https://hcn22as87t3m.feishu.cn/base/${bt}`;
+
+    // 3. 删默认空表（可选）
+    try {
+      const existing = await feishuApi('GET', `/bitable/v1/apps/${bt}/tables`);
+      const items = existing?.data?.items || [];
+      for (const t of items) {
+        if (t.table_id !== tid && t.name === '数据表') {
+          await feishuApi('DELETE', `/bitable/v1/apps/${bt}/tables/${t.table_id}`).catch(()=>{});
+        }
+      }
+    } catch {}
+
+    // 4. 批量写数据（原生API，已验证可靠）
+    if (records && records.length > 0) {
+      const recs = records.map(r => ({ fields: r.fields || r }));
+      await batchAddBaseRecords(bt, tid, recs);
     }
 
-    // 提取默认表的ID并用 +table-create 重建含字段的表
-    const tableListResult = result.results?.[1];
-    const tables = tableListResult?.result?.data?.tables || [];
-    const defaultTable = tables[0];
-    const oldTableId = defaultTable?.id;
-
-    // 用自然语言描述让AI构造字段JSON
-    const fieldsJson = await buildFieldsFromDescription(description);
-    const tableName = name + '数据表';
-
-    // 删除默认表，创建新表
-    let buildCmds = [];
-    if (oldTableId) {
-      buildCmds.push(`base +table-delete --base-token {base_token} --table-id ${oldTableId}`);
-    }
-    buildCmds.push(`base +table-create --base-token {base_token} --name "${tableName}" --fields '${fieldsJson}'`);
-
-    const buildResult = await executeCommandSequence(buildCmds);
-    const bt = result.baseToken || buildResult.baseToken;
-
-    // 创建视图
-    const viewCmd = `base +view-create --base-token {base_token} --table-id {table_id} --name "表格视图" --type grid`;
-    await executeCommandSequence([viewCmd]);
+    // 5. 创建默认视图
+    feishuCliCommand({ command: ['base', '+view-create', '--base-token', bt, '--table-id', tid, '--name', '表格视图', '--type', 'grid'] }).catch(()=>{});
 
     const url = `https://hcn22as87t3m.feishu.cn/base/${bt}`;
-    return `多维表格已创建！\n名称: ${name}\n链接: ${url}`;
+    const recInfo = records?.length ? `，${records.length}条记录已导入` : '';
+    return `多维表格已创建！\n📊 ${tableName}\n🔗 ${url}${recInfo}`;
   } catch (e) {
     return `创建失败: ${e.message}`;
   }
@@ -1314,15 +1326,17 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_create_bitable',
-    description: `用自然语言描述需求，自动创建完整的飞书多维表格。
-会自动分析描述中的关键词(电话→text, 日期→datetime, 金额→number, 状态→select, 负责人→user等)，生成合适的字段和默认视图。
-用户说"建一个客户管理表"、"帮我建个项目管理表格"时调用。`,
+    description: `创建飞书多维表格并导入数据，一步到位返回链接。支持自然语言描述或结构化字段。
+字段类型: text number select datetime checkbox user attachment link formula lookup auto_number`,
     input_schema: {
       type: 'object',
       properties: {
-        description: { type: 'string', description: '表格需求自然语言描述，含名称和期望的字段' },
+        name: { type: 'string', description: '表格名称' },
+        description: { type: 'string', description: '表格需求描述（自然语言，自动解析字段类型）。电话→text, 日期→datetime, 金额→number, 状态→select, 负责人→user等' },
+        fields: { type: 'array', items: { type: 'object' }, description: '字段数组 [{field_name:"名称",type:"text"}]，已有结构化数据时传' },
+        records: { type: 'array', items: { type: 'object' }, description: '记录数组 [{fields:{...}}]，已有数据时传' },
       },
-      required: ['description'],
+      required: [],
     },
   },
 ];
