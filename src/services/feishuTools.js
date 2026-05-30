@@ -785,8 +785,12 @@ export async function feishuConvertExcelToBitable(input) {
       const fieldsToCreate = sheet.fields.slice(0, 100);
       const normalizedFields = normalizeFields(fieldsToCreate);
       const tableResult = await addTable(appToken, tableName, normalizedFields);
-      const tableId = tableResult.table?.table_id;
-      if (!tableId) { results.push(`表"${tableName}": 创建失败`); continue; }
+      const tableId = tableResult?.table?.table_id;
+      if (!tableId) {
+        const apiErr = tableResult?.msg || tableResult?.error || JSON.stringify(tableResult).slice(0, 100);
+        results.push(`表"${tableName}": 创建失败 (API返回: ${apiErr})`);
+        continue;
+      }
 
       const recordsToWrite = sheet.records.slice(0, 5000);
       if (recordsToWrite.length > 0) {
