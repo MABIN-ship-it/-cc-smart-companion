@@ -405,7 +405,9 @@ export async function batchAddBaseRecords(appToken, tableId, records) {
     const cleanFields = {};
     for (const [key, value] of Object.entries(record.fields)) {
       if (value !== undefined && value !== null) {
-        cleanFields[key] = value;
+        const vs = String(value);
+        const dm = vs.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+        cleanFields[key] = dm ? new Date(+dm[1], +dm[2]-1, +dm[3]).getTime() : value;
       }
     }
     if (Object.keys(cleanFields).length === 0) {
