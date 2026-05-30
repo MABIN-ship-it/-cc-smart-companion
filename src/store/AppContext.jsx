@@ -3,6 +3,18 @@ import { loadSessions, saveSessions, createSessionObj, updateSession, trimSessio
 
 const AppContext = createContext(null);
 
+// 启动时预加载——在第一次渲染之前就把状态恢复好
+const _preloadSessions = loadSessions();
+const _preloadLastId = localStorage.getItem('cc_active_session_id');
+const _preloadActiveId = _preloadLastId && _preloadSessions.some(s => s.id === _preloadLastId)
+  ? _preloadLastId
+  : (_preloadSessions.length > 0
+    ? _preloadSessions.reduce((a, b) => (a.updatedAt || a.createdAt) > (b.updatedAt || b.createdAt) ? a : b).id
+    : null);
+const _preloadMessages = _preloadActiveId
+  ? (_preloadSessions.find(s => s.id === _preloadActiveId)?.messages || [])
+  : [];
+
 const initialState = {
   stage: 'chat',
   personality: {
@@ -11,7 +23,7 @@ const initialState = {
     proactive: 0.6,
     concise: 0.5,
   },
-  messages: [],
+  messages: _preloadMessages,
   memories: [],
   isProcessing: false,
   voiceEnabled: true,
@@ -21,8 +33,8 @@ const initialState = {
   apiKey: localStorage.getItem('cc_api_key') || '',
   sessionStart: Date.now(),
   inputMode: 'execute',
-  sessions: [],
-  activeSessionId: null,
+  sessions: _preloadSessions,
+  activeSessionId: _preloadActiveId,
   sessionsPanelOpen: false,
   feishuStatus: 'disconnected',
   toolboxPanelOpen: false,
