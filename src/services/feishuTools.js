@@ -1066,20 +1066,28 @@ export async function feishuCreateBitable(input) {
       }
     } catch {}
 
-    // 4. 批量写数据（原生API，已验证可靠）
+    // 4. 批量写数据
     let recs = records;
     if (typeof recs === 'string') { try { recs = JSON.parse(recs); } catch {} }
     if (typeof fields === 'string') { try { fields = JSON.parse(fields); } catch {} }
+
+    let wroteCount = 0;
     if (recs && Array.isArray(recs) && recs.length > 0) {
-      const normalized = recs.map(r => ({ fields: r.fields || r }));
-      await batchAddBaseRecords(bt, tid, normalized);
+      try {
+        const normalized = recs.map(r => ({ fields: r.fields || r }));
+        const batchResult = await batchAddBaseRecords(bt, tid, normalized);
+        wroteCount = batchResult?.inserted || 0;
+        if (batchResult?.errors) console.warn('[feishu_create_bitable] 写入异常:', batchResult.errors);
+      } catch (e) {
+        console.error('[feishu_create_bitable] 批量写入失败:', e.message);
+      }
     }
 
     // 5. 创建默认视图
     feishuCliCommand({ command: ['base', '+view-create', '--base-token', bt, '--table-id', tid, '--name', '表格视图', '--type', 'grid'] }).catch(()=>{});
 
     const url = `https://hcn22as87t3m.feishu.cn/base/${bt}`;
-    const recInfo = records?.length ? `，${records.length}条记录已导入` : '';
+    const recInfo = wroteCount > 0 ? `，${wroteCount}条记录已导入` : '';
     return `多维表格已创建！\n📊 ${tableName}\n🔗 ${url}${recInfo}`;
   } catch (e) {
     return `创建失败: ${e.message}`;
