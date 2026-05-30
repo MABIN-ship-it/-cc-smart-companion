@@ -343,6 +343,30 @@ export function isValidFieldType(type) {
   return FIELD_TYPE_MAP[type] !== undefined || Object.values(FIELD_TYPE_MAP).includes(type);
 }
 
+/** 解析中文日期格式为 ISO 日期字符串（毫秒时间戳） */
+function parseChineseDate(raw) {
+  const s = String(raw).trim();
+  // 已经是 ISO 格式: 2024-01-15
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s;
+  // 2024/1/15
+  const slash = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (slash) return `${slash[1]}-${String(slash[2]).padStart(2,'0')}-${String(slash[3]).padStart(2,'0')}`;
+  // 2024年1月15日
+  const cn = s.match(/(\d{4})年(\d{1,2})月(\d{1,2})日?/);
+  if (cn) return `${cn[1]}-${String(cn[2]).padStart(2,'0')}-${String(cn[3]).padStart(2,'0')}`;
+  // 1月15日 (无年份)
+  const md = s.match(/^(\d{1,2})月(\d{1,2})日?$/);
+  if (md) return `${new Date().getFullYear()}-${String(md[1]).padStart(2,'0')}-${String(md[2]).padStart(2,'0')}`;
+  // Excel 日期序列号（整数）
+  if (/^\d{5}$/.test(s)) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    const ts = excelEpoch + parseInt(s) * 86400000;
+    const dt = new Date(ts);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  }
+  return null;
+}
+
 export async function feishuBaseOperation(input) {
   const { operation, app_token, table_id, record } = input || {};
 
@@ -794,8 +818,60 @@ export async function feishuConvertExcelToBitable(input) {
 
       const recordsToWrite = sheet.records.slice(0, 5000);
       if (recordsToWrite.length > 0) {
-        const batchResult = await batchAddBaseRecords(appToken, tableId, recordsToWrite);
-        results.push(`表"${tableName}": ${batchResult.inserted}/${batchResult.requested} 条记录`);
+        // 获取表的字段类型用于值清洗
+        let fieldTypes = {};
+        try {
+          const fieldResult = await listTableFields(appToken, tableId);
+          (fieldResult?.items || []).forEach(f => {
+            fieldTypes[f.field_name] = f.type;
+          });
+        } catch {}
+
+        // 值清洗：根据字段类型转换值
+        const cleanedRecords = recordsToWrite.map(record => {
+          const cleanFields = {};
+          for (const [key, value] of Object.entries(record.fields || {})) {
+            const raw = String(value ?? '').trim();
+            if (!raw || raw === 'undefined' || raw === 'null' || raw === 'NaN') continue;
+
+            const fieldType = fieldTypes[key];
+            if (!fieldType) { cleanFields[key] = raw; continue; }
+
+            // 根据字段类型清洗值
+            switch (fieldType) {
+              case 2: // number
+              case 22: // currency
+                const num = parseFloat(raw.replace(/[¥$€£,\s]/g, ''));
+                cleanFields[key] = isNaN(num) ? raw : num;
+                break;
+              case 5: // date
+                // 尝试解析中文日期格式如 "2024年1月"、"2024/1/1"、"1月1日"
+                const d = parseChineseDate(raw);
+                if (d) { cleanFields[key] = d; } else { cleanFields[key] = raw; }
+                break;
+              case 18: // rating
+                const rating = parseInt(raw);
+                cleanFields[key] = (rating >= 0 && rating <= 5) ? rating : raw;
+                break;
+              case 1001: // progress
+                const pct = parseFloat(raw);
+                cleanFields[key] = (pct >= 0 && pct <= 100) ? pct : raw;
+                break;
+              case 7: // checkbox
+                const t = raw.toLowerCase();
+                if (t === 'true' || t === '是' || t === 'yes' || t === '1' || t === '✓' || t === '√') cleanFields[key] = true;
+                else if (t === 'false' || t === '否' || t === 'no' || t === '0' || t === '✗' || t === '×') cleanFields[key] = false;
+                else cleanFields[key] = raw;
+                break;
+              default:
+                cleanFields[key] = raw;
+            }
+          }
+          return Object.keys(cleanFields).length > 0 ? { fields: cleanFields } : null;
+        }).filter(Boolean);
+
+        const batchResult = await batchAddBaseRecords(appToken, tableId, cleanedRecords);
+        results.push(`表"${tableName}": ${batchResult.inserted}/${batchResult.requested} 条记录${batchResult.errors ? ' (部分失败)' : ''}`);
       } else {
         results.push(`表"${tableName}": 创建成功（无数据行）`);
       }
