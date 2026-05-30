@@ -2,6 +2,7 @@
  * 工具箱面板 — 管理集成应用
  */
 import { useState, useEffect } from 'react';
+import AvatarLibrary from './AvatarLibrary';
 import { useApp } from '../store/AppContext';
 import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection, checkPermissions, getFeishuPermissionUrl, copyScopeToClipboard } from '../services/feishu';
 import { getBotConfig, saveBotConfig, getMonitorableChats, getBotStats } from '../services/feishuBotService';
@@ -42,6 +43,7 @@ export default function ToolboxPanel() {
   const [checkingPerms, setCheckingPerms] = useState(false);
   const [botConfig, setBotConfig] = useState(getBotConfig());
   const [showBotConfig, setShowBotConfig] = useState(false);
+  const [showAvatarLibrary, setShowAvatarLibrary] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
   const feishuConnecting = state.feishuStatus === 'connecting';
@@ -198,18 +200,14 @@ export default function ToolboxPanel() {
           </div>
         </div>
 
-        {/* 更多应用占位 */}
-        <div className="toolbox-app-card disabled">
+        {/* 形象库卡片 */}
+        <div className="toolbox-app-card" onClick={() => { dispatch({ type: 'TOGGLE_TOOLBOX' }); setShowAvatarLibrary?.(true); }}>
           <div className="toolbox-app-icon-wrap">
-            <svg width="44" height="44" viewBox="0 0 44 44" fill="none" opacity="0.25">
-              <rect width="44" height="44" rx="12" fill="rgba(255,255,255,0.08)"/>
-              <circle cx="22" cy="22" r="9" stroke="rgba(255,255,255,0.3)" strokeWidth="1.4"/>
-              <path d="M22 17v10M17 22h10" stroke="rgba(255,255,255,0.3)" strokeWidth="1.4" strokeLinecap="round"/>
-            </svg>
+            <span style={{ fontSize: 36 }}>🎭</span>
           </div>
-          <div className="toolbox-app-name">更多应用</div>
-          <div className="toolbox-app-subtitle">即将推出</div>
-          <div className="toolbox-app-status">敬请期待</div>
+          <div className="toolbox-app-name">形象库</div>
+          <div className="toolbox-app-subtitle">3D角色·换装</div>
+          <div className="toolbox-app-status">点击进入</div>
         </div>
       </div>
 
@@ -450,6 +448,14 @@ export default function ToolboxPanel() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 形象库 */}
+      {showAvatarLibrary && (
+        <AvatarLibrary
+          onClose={() => setShowAvatarLibrary(false)}
+          onSwitchAvatar={(av) => console.log('[Avatar] 切换:', av.name, av.path)}
+        />
       )}
     </div>
   );

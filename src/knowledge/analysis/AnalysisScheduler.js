@@ -128,6 +128,61 @@ class AnalysisScheduler {
       analysisInProgress: this._analysisInProgress,
     };
   }
+
+  /** 周度摘要生成（每周日凌晨3点） */
+  scheduleWeeklySummary() {
+    const now = new Date();
+    const nextSunday = new Date(now);
+    nextSunday.setDate(now.getDate() + (7 - now.getDay()) % 7);
+    nextSunday.setHours(3, 0, 0, 0);
+    if (nextSunday <= now) nextSunday.setDate(nextSunday.getDate() + 7);
+
+    const delay = nextSunday - now;
+    setTimeout(() => {
+      this._generateWeeklySummary();
+      setInterval(() => this._generateWeeklySummary(), 7 * 24 * 3600 * 1000);
+    }, delay);
+
+    console.log(`[Analysis] 周度摘要已调度: ${nextSunday.toLocaleString()}`);
+  }
+
+  _generateWeeklySummary() {
+    try {
+      const entities = this._storage.queryEntities();
+      const weekAgo = Date.now() - 7 * 24 * 3600 * 1000;
+      const newEntities = entities.filter(e => (e.createdAt || 0) > weekAgo);
+
+      const summary = {
+        date: new Date().toISOString(),
+        newEntityCount: newEntities.length,
+        totalEntityCount: entities.length,
+        topTypes: this._countTypes(newEntities),
+        archivedCount: entities.filter(e => e.level === 'archived').length,
+      };
+
+      try { localStorage.setItem('cc_weekly_summary', JSON.stringify(summary)); } catch {}
+      console.log(`[Analysis] 周度摘要已生成: ${newEntities.length}新实体/${entities.length}总计`);
+    } catch (e) {
+      console.warn('[Analysis] 周度摘要失败:', e);
+    }
+  }
+
+  _countTypes(entities) {
+    const counts = {};
+    for (const e of entities) {
+      const t = e.type || 'unknown';
+      counts[t] = (counts[t] || 0) + 1;
+    }
+    return Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,5).map(([k,v])=>`${k}(${v})`);
+  }
+
+  /** 获取最近周度摘要 */
+  static getWeeklySummary() {
+    try {
+      const raw = localStorage.getItem('cc_weekly_summary');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
 }
 
 export { AnalysisScheduler, LIGHT_ANALYSIS_INTERVAL, DEEP_ANALYSIS_INTERVAL };
