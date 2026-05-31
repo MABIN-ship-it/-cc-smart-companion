@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listPlugins: () => ipcRenderer.invoke('plugin:list'),
   uninstallPlugin: (pluginId) => ipcRenderer.invoke('plugin:uninstall', pluginId),
   convertXlsToXlsx: (xlsPath) => ipcRenderer.invoke('excel:convertXlsToXlsx', xlsPath),
+  saveModel: (base64, filename) => ipcRenderer.invoke('model:save', base64, filename),
   onFeishuMessage: (callback) => {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('feishu:message', handler);

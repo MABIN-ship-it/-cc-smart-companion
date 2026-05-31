@@ -1352,6 +1352,22 @@ ipcMain.handle('plugin:uninstall', async (_event, pluginId) => {
   } catch (e) { return { success: false, error: e.message }; }
 });
 
+// ====== 模型文件保存 ======
+
+ipcMain.handle('model:save', async (_event, base64, filename) => {
+  try {
+    const modelDir = path.join(os.homedir(), '.cc', 'models');
+    fs.mkdirSync(modelDir, { recursive: true });
+    const safeName = (filename || 'model').replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const filePath = path.join(modelDir, `${Date.now()}_${safeName}`);
+    const buf = Buffer.from(base64, 'base64');
+    fs.writeFileSync(filePath, buf);
+    return { success: true, path: filePath, size: buf.length };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 // ====== Excel .xls 转 .xlsx ======
 
 ipcMain.handle('excel:convertXlsToXlsx', async (_event, xlsPath) => {
