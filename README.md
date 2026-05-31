@@ -42,6 +42,10 @@
 
 Download `CC-Setup-x.x.x.exe` from [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases).
 
+## 🎬 Demo | 演示
+
+<video src="./screenshots/飞书消息excel表格转换飞书表格演示.mp4" controls width="100%"></video>
+
 📥 [Gitee Release](https://gitee.com/mabin-cici/cc-smart-companion/releases) 下载便携版，解压双击 `electron.exe`。或从源码构建：
 
 ### Build from Source | 源码运行
