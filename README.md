@@ -42,7 +42,7 @@
 
 Download `CC-Setup-x.x.x.exe` from [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases).
 
-从 [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) 下载安装包，双击安装。
+📥 [Gitee Release](https://gitee.com/mabin-cici/cc-smart-companion/releases) 下载便携版，解压双击 `electron.exe`。或从源码构建：
 
 ### Build from Source | 源码运行
 
