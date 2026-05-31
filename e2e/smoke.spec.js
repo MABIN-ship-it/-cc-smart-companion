@@ -5,7 +5,9 @@ const fs = require('fs');
 const http = require('http');
 
 const projectRoot = path.resolve(__dirname, '..');
-const electronPath = path.join(projectRoot, 'node_modules', 'electron', 'dist', 'electron.exe');
+const electronPath = fs.existsSync(path.join(projectRoot, 'node_modules', 'electron', 'dist', 'electron.exe'))
+  ? path.join(projectRoot, 'node_modules', 'electron', 'dist', 'electron.exe')
+  : 'D:/cc安装包/1cc最终版/electron.exe';
 
 function getDebugPort() {
   // 找一个可用端口

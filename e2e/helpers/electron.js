@@ -10,6 +10,7 @@ const { spawn } = require('child_process');
 
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 const ELECTRON_PATH = path.join(PROJECT_ROOT, 'node_modules', 'electron', 'dist', 'electron.exe');
+const ELECTRON_PATH_FALLBACK = 'D:/cc安装包/1cc最终版/electron.exe';
 let portCounter = 9223;
 
 function getFreePort() { return portCounter++; }
@@ -28,11 +29,12 @@ async function launchApp(options = {}) {
   const { timeout = 30000, skipOnboarding = true } = options;
   const debugPort = getFreePort();
 
-  if (!fs.existsSync(ELECTRON_PATH)) {
+  const exePath = fs.existsSync(ELECTRON_PATH) ? ELECTRON_PATH : ELECTRON_PATH_FALLBACK;
+  if (!fs.existsSync(exePath)) {
     throw new Error(`Electron 文件不存在: ${ELECTRON_PATH}`);
   }
 
-  const child = spawn(ELECTRON_PATH, [
+  const child = spawn(exePath, [
     'electron/main.js',
     `--remote-debugging-port=${debugPort}`,
   ], {
