@@ -64,6 +64,23 @@ export function extractMemoryFromConversation(userMessage, aiResponse) {
   return newMemories;
 }
 
+/** 从记忆中提取实体名（简单中文分词+关键词提取） */
+function extractEntityNames(text) {
+  if (!text) return [];
+  // 提取专有名词：中文人名、项目名、公司名等
+  const patterns = [
+    /[马张李王陈杨赵黄周吴徐孙胡朱高林何郭罗梁宋郑谢韩唐冯于董萧程曹袁邓许傅沈曾彭吕苏卢蒋蔡贾丁魏薛叶阎余潘杜戴夏钟汪田任姜范方石姚谭廖邹熊金陆郝孔白崔康毛邱秦江史顾侯邵孟龙万段雷钱汤尹黎易常武乔贺赖龚文]/g,
+    /[中北南西东][山路汇店区园城馆场站港楼湖岛江海河]/g,
+    /\S{2,4}(?:项目|工程|计划|方案|报告|表[格单]|系统|平台|团队)/g,
+  ];
+  const names = [];
+  for (const p of patterns) {
+    let m;
+    while ((m = p.exec(text)) !== null) names.push(m[0]);
+  }
+  return [...new Set(names)];
+}
+
 function mergeMemories(existing, newOnes) {
   const merged = [...existing];
   for (const mem of newOnes) {
@@ -83,7 +100,38 @@ function mergeMemories(existing, newOnes) {
       merged.push(mem);
     }
   }
+  // 提取实体→异步更新知识图谱（不等结果，不阻塞）
+  for (const mem of newOnes) {
+    const names = extractEntityNames(mem.content);
+    if (names.length > 0) {
+      try { updateKnowledgeGraphEntities(names, mem); } catch {}
+    }
+  }
+
   return merged;
+}
+
+/** 向知识图谱注入实体 */
+function updateKnowledgeGraphEntities(names, mem) {
+  try {
+    const ks = window.__cc_knowledgeSystem;
+    if (!ks) return;
+    const storage = ks._storage;
+    if (!storage) return;
+    for (const name of names) {
+      const existing = storage.queryEntities().filter(e => e.name === name);
+      if (existing.length === 0) {
+        storage.addEntity({
+          type: 'memory_entity',
+          name,
+          source: mem.content.slice(0, 100),
+          level: mem.level || 'warm',
+          importance: mem.importance || 3,
+          createdAt: Date.now(),
+        });
+      }
+    }
+  } catch {}
 }
 
 function similarContent(a, b) {
@@ -129,12 +177,28 @@ export function getHotMemories(limit = 10) {
     .slice(0, limit);
 }
 
+/** 从知识图谱获取相关实体 */
+function getRelatedEntitiesFromKG(query) {
+  try {
+    const ks = window.__cc_knowledgeSystem;
+    if (!ks?._storage) return [];
+    const entities = ks._storage.queryEntities() || [];
+    const qLower = (query || '').toLowerCase();
+    return entities.filter(e =>
+      e.name && qLower.includes(e.name.toLowerCase().slice(0, 2))
+    ).slice(0, 5);
+  } catch { return []; }
+}
+
 export function searchMemories(query, limit = 5) {
   const memories = loadMemories();
   if (!query.trim() || memories.length === 0) return memories.slice(0, limit);
 
   const queryTokens = tokenize(query);
   if (queryTokens.length === 0) return memories.slice(0, limit);
+
+  // 从知识图谱获取相关实体用于相关性增强
+  const relatedNames = new Set(getRelatedEntitiesFromKG(query).map(e => e.name));
 
   // Build document-term index
   const docs = memories.map(m => ({ id: m.id, tokens: tokenize(m.content), memory: m }));
@@ -174,9 +238,14 @@ export function searchMemories(query, limit = 5) {
     // Importance contributes as a multiplier
     const importanceBoost = 1 + (doc.memory.importance || 0) / 10;
 
+    // KG实体匹配加分
+    const entityBoost = relatedNames.size > 0
+      ? (extractEntityNames(doc.memory.content).some(n => relatedNames.has(n)) ? 3 : 0)
+      : 0;
+
     return {
       memory: doc.memory,
-      score: score * importanceBoost + recencyBoost,
+      score: score * importanceBoost + recencyBoost + entityBoost,
     };
   });
 
