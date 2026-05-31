@@ -30,6 +30,21 @@ const PLUGIN_REGISTRY = {
   },
 };
 
+/** 从主进程加载已安装插件列表（启动时调用） */
+export async function loadPluginsFromMain() {
+  try {
+    if (!window.electronAPI?.listPlugins) return;
+    const { plugins } = await window.electronAPI.listPlugins();
+    for (const p of plugins) {
+      if (PLUGIN_REGISTRY[p.id]) {
+        PLUGIN_REGISTRY[p.id] = { ...PLUGIN_REGISTRY[p.id], ...p, installed: true };
+      } else {
+        PLUGIN_REGISTRY[p.id] = { ...p, tools: [], executors: {}, installed: true };
+      }
+    }
+  } catch {}
+}
+
 export function getPlugins() { return { ...PLUGIN_REGISTRY }; }
 
 export function getPlugin(id) { return PLUGIN_REGISTRY[id] || null; }

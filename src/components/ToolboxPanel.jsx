@@ -45,6 +45,19 @@ export default function ToolboxPanel() {
   const [showWechatGuide, setShowWechatGuide] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
+  const [wechatInstalled, setWechatInstalled] = useState(false);
+
+  useEffect(() => {
+    const loadPlugins = async () => {
+      try {
+        if (window.electronAPI?.listPlugins) {
+          const { plugins } = await window.electronAPI.listPlugins();
+          setWechatInstalled(plugins.some(p => p.id === 'wechat'));
+        }
+      } catch {}
+    };
+    loadPlugins();
+  }, []);
 
   const pickPluginFile = () => new Promise(resolve => {
     const input = document.createElement('input');
@@ -229,11 +242,15 @@ export default function ToolboxPanel() {
         </div>
 
         {/* 微信卡片 */}
-        <div className="toolbox-app-card" style={{ position: 'relative', opacity: 0.75 }} onClick={() => setShowWechatGuide(true)}>
+        <div className={`toolbox-app-card${wechatInstalled ? ' connected' : ''}`}
+          style={{ position: 'relative', opacity: wechatInstalled ? 1 : 0.75 }}
+          onClick={() => setShowWechatGuide(true)}>
           <div className="toolbox-app-icon-wrap"><span style={{ fontSize: 36 }}>💬</span></div>
           <div className="toolbox-app-name">微信</div>
           <div className="toolbox-app-subtitle">消息·联系人</div>
-          <div className="toolbox-app-status">待安装</div>
+          <div className={`toolbox-app-status${wechatInstalled ? ' online' : ''}`}>
+            <span className="toolbox-status-dot" />{wechatInstalled ? '已安装' : '待安装'}
+          </div>
           <div className="toolbox-app-badge">内置</div>
           <span className="plugin-replace-btn" data-tooltip="为了您更好的使用体验，您可以更换更优质的插件"
             onClick={async (e) => { e.stopPropagation(); const f = await pickPluginFile(); if (f) installAndAlert(f, '微信'); }}>
@@ -352,39 +369,6 @@ module.exports = {
       )}
 
       {/* 安装插件上传区 */}
-      <div
-        onDrop={async (e) => {
-          e.preventDefault();
-          const file = e.dataTransfer?.files?.[0];
-          if (!file || !file.name.endsWith('.cc-plugin.js')) { alert('请上传 .cc-plugin.js 格式的插件文件'); return; }
-          if (window.electronAPI?.installPlugin) {
-            const result = await window.electronAPI.installPlugin(file.path || URL.createObjectURL(file));
-            alert(result.success ? `插件 "${result.name}" 安装成功！请重启CC生效。` : `安装失败: ${result.error}`);
-          } else {
-            alert('插件安装功能需要 Electron 环境');
-          }
-        }}
-        onDragOver={e => e.preventDefault()}
-        style={{
-          border: '2px dashed #444', borderRadius: 10, padding: 16, textAlign: 'center',
-          marginTop: 16, color: '#888', fontSize: 12, cursor: 'pointer',
-        }}>
-        📦 安装新插件（拖拽 .cc-plugin.js 到此处）
-        <label style={{ display: 'block', color: '#7b7bff', cursor: 'pointer', marginTop: 4 }}>
-          或点击选择文件
-          <input type="file" accept=".cc-plugin.js" onChange={async (e) => {
-            const file = e.target?.files?.[0];
-            if (!file) return;
-            if (window.electronAPI?.installPlugin) {
-              const result = await window.electronAPI.installPlugin(file.path || URL.createObjectURL(file));
-              alert(result.success ? `插件 "${result.name}" 安装成功！` : `安装失败: ${result.error}`);
-            } else {
-              alert('插件安装功能需要 Electron 环境');
-            }
-          }} style={{ display: 'none' }} />
-        </label>
-      </div>
-
       {/* 飞书配置弹窗 */}
       {showFeishuConfig && (
         <div className="feishu-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowFeishuConfig(false); }}>

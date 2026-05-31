@@ -1290,41 +1290,66 @@ ipcMain.handle('feishu:getSession', async () => {
 
 // ====== 插件安装 ======
 
-ipcMain.handle('plugin:install', async (_event, source) => {
+const PLUGIN_DIR = path.join(os.homedir(), '.cc', 'plugins');
+
+ipcMain.handle('plugin:install', async (_event, content) => {
   try {
-    // source 直接是文本内容（前端 FileReader.readAsText 读取）
-    const content = typeof source === 'string' ? source : '';
-    if (!content) return { success: false, error: '插件内容为空' };
-    const idMatch = content.match(/id:\s*['"]([^'"]+)['"]/);
-    const nameMatch = content.match(/name:\s*['"]([^'"]+)['"]/);
-    if (!idMatch) return { success: false, error: '插件文件格式错误：缺少 id' };
+    if (typeof content !== 'string' || !content) return { success: false, error: '插件内容为空' };
+    // 提取 id（正则解析 module.exports 对象）
+    let idMatch = content.match(/id\s*:\s*['"]([^'"]+)['"]/);
+    if (!idMatch) idMatch = content.match(/id\s*:\s*"([^"]+)"/);
+    if (!idMatch) return { success: false, error: '插件文件格式错误：缺少 id 字段。请在文件中定义 id: "插件ID"' };
     const pluginId = idMatch[1];
+    const nameMatch = content.match(/name\s*:\s*['"]([^'"]+)['"]/);
     const pluginName = nameMatch?.[1] || pluginId;
-    const pluginDir = path.join(os.homedir(), '.cc', 'plugins');
-    fs.mkdirSync(pluginDir, { recursive: true });
-    const destPath = path.join(pluginDir, `${pluginId}.cc-plugin.js`);
+    // 检查重复
+    fs.mkdirSync(PLUGIN_DIR, { recursive: true });
+    const destPath = path.join(PLUGIN_DIR, `${pluginId}.cc-plugin.js`);
+    const exists = fs.existsSync(destPath);
+    // 写入
     fs.writeFileSync(destPath, content, 'utf-8');
-    return { success: true, id: pluginId, name: pluginName, path: destPath };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
+    return { success: true, id: pluginId, name: pluginName, replaced: exists };
+  } catch (e) { return { success: false, error: e.message }; }
 });
 
-ipcMain.handle('plugin:replace', async (_event, pluginId, filePath) => {
+ipcMain.handle('plugin:replace', async (_event, pluginId, content) => {
   try {
-    const pluginDir = path.join(os.homedir(), '.cc', 'plugins');
-    const backupDir = path.join(pluginDir, 'backup');
+    const backupDir = path.join(PLUGIN_DIR, 'backup');
     fs.mkdirSync(backupDir, { recursive: true });
-    const oldPath = path.join(pluginDir, `${pluginId}.cc-plugin.js`);
+    const oldPath = path.join(PLUGIN_DIR, `${pluginId}.cc-plugin.js`);
     if (fs.existsSync(oldPath)) {
-      const backupPath = path.join(backupDir, `${pluginId}_${Date.now()}.cc-plugin.js`);
-      fs.copyFileSync(oldPath, backupPath);
+      fs.copyFileSync(oldPath, path.join(backupDir, `${pluginId}_${Date.now()}.cc-plugin.js`));
     }
-    fs.copyFileSync(filePath, oldPath);
+    fs.writeFileSync(oldPath, content, 'utf-8');
     return { success: true, id: pluginId };
-  } catch (e) {
-    return { success: false, error: e.message };
-  }
+  } catch (e) { return { success: false, error: e.message }; }
+});
+
+ipcMain.handle('plugin:list', async () => {
+  try {
+    if (!fs.existsSync(PLUGIN_DIR)) return { plugins: [] };
+    const files = fs.readdirSync(PLUGIN_DIR).filter(f => f.endsWith('.cc-plugin.js'));
+    const plugins = [];
+    for (const f of files) {
+      try {
+        const filePath = path.join(PLUGIN_DIR, f);
+        delete require.cache[require.resolve(filePath)];
+        const plugin = require(filePath);
+        if (plugin.id && plugin.name) {
+          plugins.push({ id: plugin.id, name: plugin.name, icon: plugin.icon || '📁', subtitle: plugin.subtitle || '', version: plugin.version, installed: true });
+        }
+      } catch { /* 单文件错误不影响其他 */ }
+    }
+    return { plugins };
+  } catch (e) { return { plugins: [], error: e.message }; }
+});
+
+ipcMain.handle('plugin:uninstall', async (_event, pluginId) => {
+  try {
+    const filePath = path.join(PLUGIN_DIR, `${pluginId}.cc-plugin.js`);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
 });
 
 // ====== Excel .xls 转 .xlsx ======

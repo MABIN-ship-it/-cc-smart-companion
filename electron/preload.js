@@ -87,8 +87,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   feishuGetSession: () => ipcRenderer.invoke('feishu:getSession'),
   feishuRefreshSession: () => ipcRenderer.invoke('feishu:refreshSession'),
   feishuCliCommand: (command) => ipcRenderer.invoke('feishu:cli', command),
-  installPlugin: (filePath) => ipcRenderer.invoke('plugin:install', filePath),
-  replacePlugin: (pluginId, filePath) => ipcRenderer.invoke('plugin:replace', pluginId, filePath),
+  installPlugin: (content) => ipcRenderer.invoke('plugin:install', content),
+  replacePlugin: (pluginId, content) => ipcRenderer.invoke('plugin:replace', pluginId, content),
+  listPlugins: () => ipcRenderer.invoke('plugin:list'),
+  uninstallPlugin: (pluginId) => ipcRenderer.invoke('plugin:uninstall', pluginId),
   convertXlsToXlsx: (xlsPath) => ipcRenderer.invoke('excel:convertXlsToXlsx', xlsPath),
   onFeishuMessage: (callback) => {
     const handler = (_event, data) => callback(data);
