@@ -383,10 +383,15 @@ module.exports = {
             <div style={{ padding: 16, fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
               <p style={{ fontWeight: 600, color: '#ddd' }}>Chatlog 服务地址</p>
               <input defaultValue="http://127.0.0.1:5030" style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #444', background: '#111', color: '#ddd', fontSize: 13, marginBottom: 12 }} />
-              <p style={{ fontWeight: 600, color: '#ddd' }}>状态</p>
-              <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>⚠️ 需要先安装并启动 Chatlog 服务才能使用微信插件功能。</p>
-              <p style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>✅ 已安装 | 可读取消息 | 按日期查询 | 提取图片文件</p>
-              <p style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>💡 Chatlog 启动后，在 CC 对话中直接说"帮我查昨天的微信消息"即可使用。</p>
+              <p style={{ fontWeight: 600, color: '#ddd', marginTop: 12 }}>怎么连接微信？</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.8 }}>
+                1. 下载并安装 Chatlog（微信聊天记录工具）<br/>
+                2. 启动 Chatlog 服务（默认端口 5030）<br/>
+                3. 确认上方地址正确后即可使用
+              </p>
+              <p style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>
+                ⚠️ 微信插件需要 Chatlog 作为后端服务，类似于飞书插件需要 App ID/Secret。插件已就绪，等 Chatlog 启动后，说"帮我查昨天的微信消息"即可。
+              </p>
             </div>
           </div>
         </div>
