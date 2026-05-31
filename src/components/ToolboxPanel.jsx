@@ -43,6 +43,7 @@ export default function ToolboxPanel() {
   const [botConfig, setBotConfig] = useState(getBotConfig());
   const [showBotConfig, setShowBotConfig] = useState(false);
   const [showWechatGuide, setShowWechatGuide] = useState(false);
+  const [showWechatConfig, setShowWechatConfig] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
   const [wechatInstalled, setWechatInstalled] = useState(false);
@@ -244,7 +245,7 @@ export default function ToolboxPanel() {
         {/* 微信卡片 */}
         <div className={`toolbox-app-card${wechatInstalled ? ' connected' : ''}`}
           style={{ position: 'relative', opacity: wechatInstalled ? 1 : 0.75 }}
-          onClick={() => setShowWechatGuide(true)}>
+          onClick={() => wechatInstalled ? setShowWechatConfig(true) : setShowWechatGuide(true)}>
           <div className="toolbox-app-icon-wrap"><span style={{ fontSize: 36 }}>💬</span></div>
           <div className="toolbox-app-name">微信</div>
           <div className="toolbox-app-subtitle">消息·联系人</div>
@@ -368,7 +369,28 @@ module.exports = {
         </div>
       )}
 
-      {/* 安装插件上传区 */}
+      {/* 微信配置弹窗（已安装时显示） */}
+      {showWechatConfig && (
+        <div className="feishu-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowWechatConfig(false); }}>
+          <div className="feishu-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <div className="feishu-modal-header">
+              <div className="feishu-modal-title-row">
+                <span style={{ fontSize: 24 }}>💬</span>
+                <span style={{ fontWeight: 700, fontSize: 16 }}>微信插件配置</span>
+              </div>
+              <button className="feishu-modal-close" onClick={() => setShowWechatConfig(false)}>✕</button>
+            </div>
+            <div style={{ padding: 16, fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+              <p style={{ fontWeight: 600, color: '#ddd' }}>Chatlog 服务地址</p>
+              <input defaultValue="http://127.0.0.1:5030" style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #444', background: '#111', color: '#ddd', fontSize: 13, marginBottom: 12 }} />
+              <p style={{ fontWeight: 600, color: '#ddd' }}>状态</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>⚠️ 需要先安装并启动 Chatlog 服务才能使用微信插件功能。</p>
+              <p style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>✅ 已安装 | 可读取消息 | 按日期查询 | 提取图片文件</p>
+              <p style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>💡 Chatlog 启动后，在 CC 对话中直接说"帮我查昨天的微信消息"即可使用。</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 飞书配置弹窗 */}
       {showFeishuConfig && (
         <div className="feishu-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowFeishuConfig(false); }}>
