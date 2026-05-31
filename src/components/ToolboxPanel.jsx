@@ -381,16 +381,16 @@ module.exports = {
               <button className="feishu-modal-close" onClick={() => setShowWechatConfig(false)}>✕</button>
             </div>
             <div style={{ padding: 16, fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-              <p style={{ fontWeight: 600, color: '#ddd' }}>Chatlog 服务地址</p>
-              <input defaultValue="http://127.0.0.1:5030" style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #444', background: '#111', color: '#ddd', fontSize: 13, marginBottom: 12 }} />
+              <p style={{ fontWeight: 600, color: '#ddd' }}>wxhelper 服务地址</p>
+              <input defaultValue="http://127.0.0.1:19088" style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #444', background: '#111', color: '#ddd', fontSize: 13, marginBottom: 12 }} />
               <p style={{ fontWeight: 600, color: '#ddd', marginTop: 12 }}>怎么连接微信？</p>
               <p style={{ color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.8 }}>
-                1. 下载并安装 Chatlog（微信聊天记录工具）<br/>
-                2. 启动 Chatlog 服务（默认端口 5030）<br/>
-                3. 确认上方地址正确后即可使用
+                1. 下载 wxhelper 并注入微信进程<br/>
+                2. 确认服务地址 http://127.0.0.1:19088<br/>
+                3. 在 CC 中可说"查微信消息""给XX发微信"等
               </p>
               <p style={{ marginTop: 12, fontSize: 11, color: 'var(--text-muted)' }}>
-                ⚠️ 微信插件需要 Chatlog 作为后端服务，类似于飞书插件需要 App ID/Secret。插件已就绪，等 Chatlog 启动后，说"帮我查昨天的微信消息"即可。
+                ⚠️ wxhelper 需要 Python 环境和微信客户端。插件已就绪，启动 wxhelper 后即可在 CC 中使用微信。
               </p>
             </div>
           </div>
