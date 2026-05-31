@@ -47,6 +47,35 @@ export async function sendMessage(userMessage, state, onProgress, signal, images
     && window.electronAPI
     && typeof window.electronAPI.shellExecute === 'function';
 
+  // 阶段五：主动智能——每天首次对话时注入摘要提醒
+  const today = new Date().toDateString();
+  const lastSeen = localStorage.getItem('cc_last_active_date');
+  if (lastSeen !== today && toolsAvailable) {
+    try { localStorage.setItem('cc_last_active_date', today); } catch {}
+    if (state?.feishuStatus === 'connected') {
+      onProgress?.({ type: 'status', data: '正在检查今日工作概况...' });
+    }
+  }
+
+  // 阶段六：人格进化——从用户反馈自动调整参数
+  const feedbackWords = {
+    concise_increase: ['太啰嗦','说重点','别废话','简洁点','短一点','少说点','精简','浓缩'],
+    concise_decrease: ['详细点','展开说','具体点','多说点','说清楚','详细','展开'],
+    warmth_increase: ['说话好冷','温柔点','热情点','温暖一点','别那么冷'],
+    warmth_decrease: ['太热情了','别那么肉麻','冷静点','淡定点'],
+  };
+  for (const [param, words] of Object.entries(feedbackWords)) {
+    if (words.some(w => userMessage.includes(w))) {
+      const [key, dir] = param.split('_');
+      const delta = dir === 'increase' ? 5 : -5;
+      try {
+        const current = state?.personality?.[key] ?? 0.5;
+        const newVal = Math.max(0, Math.min(100, Math.round(current * 100) + delta));
+        localStorage.setItem(`cc_personality_${key}`, newVal);
+      } catch {}
+    }
+  }
+
   if (toolsAvailable) {
     // 执行模式：纯聊天跳过ReAct，直接simpleChat
     if (mode === 'execute') {

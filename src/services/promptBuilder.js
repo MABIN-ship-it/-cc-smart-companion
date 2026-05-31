@@ -452,7 +452,20 @@ export function buildSystemPrompt(state, userMessage, mode = 'chat') {
   const modeSection = buildModeSection(mode);
   const projectSection = getProjectContext();
   const personalizedSection = getPersonalizedPrompt();
-  const attachments = buildAttachments(state);
+  let attachments = buildAttachments(state);
+
+  // 知识图谱实体解析——用户说"那个报价表"，CC知道指的是哪个
+  try {
+    const ks = window?.__cc_knowledgeSystem;
+    if (ks?._storage && userMessage) {
+      const entities = ks._storage.queryEntities() || [];
+      const tokens = userMessage.split(/[\s，,。！？、]+/).filter(t => t.length >= 2);
+      const related = entities.filter(e => tokens.some(t => (e.name || '').includes(t))).slice(0, 5);
+      if (related.length > 0) {
+        attachments += '\n' + related.map(e => `• ${e.name}`).join('\n');
+      }
+    }
+  } catch {}
 
   const sections = [
     buildIdentitySection(),

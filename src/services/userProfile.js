@@ -321,6 +321,18 @@ export function extractProfileDiff(userMsg, aiResp) {
 
   if (rules.length > 0) diff.add['决策规则'] = rules;
 
+  // ── 自我纠错检测：上次我说过不要XX → 永久规则 ──
+  const correctionRe = /(上次|之前|以前).*说过.{0,10}(不要|别|不能|不许|千万别|禁止)/g;
+  let cm;
+  while ((cm = correctionRe.exec(userText)) !== null) {
+    const rest = userText.slice(cm.index + cm[0].length).split(/[，。,\s]/)[0]?.trim();
+    if (rest && rest.length >= 2 && rest.length <= 30) {
+      const rule = cm[2] + rest;
+      rules.push({ type: '纠正', value: rule, negative: true });
+    }
+  }
+  if (rules.length > 0) diff.add['决策规则'] = rules;
+
   // 清理空分类
   if (Object.keys(diff.add).length === 0) delete diff.add;
   if (Object.keys(diff.append).length === 0) delete diff.append;
