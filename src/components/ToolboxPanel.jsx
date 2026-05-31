@@ -45,6 +45,29 @@ export default function ToolboxPanel() {
   const [showWechatGuide, setShowWechatGuide] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
+
+  const pickPluginFile = () => new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.cc-plugin.js';
+    input.onchange = e => resolve(e.target.files?.[0] || null);
+    input.click();
+  });
+  const installAndAlert = async (file, name) => {
+    if (!window.electronAPI?.installPlugin) { alert('插件安装需要 Electron 环境'); return; }
+    const r = await window.electronAPI.installPlugin(file.path || URL.createObjectURL(file));
+    alert(r.success ? `"${r.name || name}" 插件更新成功！请重启CC。` : `安装失败: ${r.error}`);
+  };
+  const handlePluginDrop = async (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer?.files?.[0];
+    if (!f || !f.name.endsWith('.cc-plugin.js')) { alert('请上传 .cc-plugin.js 格式'); return; }
+    await installAndAlert(f, f.name);
+  };
+  const handlePluginFile = async (e) => {
+    const f = e.target?.files?.[0];
+    if (!f) return;
+    await installAndAlert(f, f.name);
+  };
   const feishuConnecting = state.feishuStatus === 'connecting';
 
   const handleCheckPermissions = async () => {

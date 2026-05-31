@@ -864,13 +864,16 @@ body {
 }
 
 /* 形象库固定按钮（工具栏上方） */
-.avatar-library-btn {
-  position: fixed !important;
-  left: 12px !important;
-  top: calc(50% - 220px) !important;
-  z-index: 999 !important;
-  width: 40px !important;
-  height: 40px !important;
+.avatar-library-btn-wrap {
+  position: fixed;
+  left: 12px;
+  top: calc(50% - 220px);
+  z-index: 99999;
+  pointer-events: auto;
+}
+.avatar-library-btn-wrap .tool-icon-btn {
+  width: 40px;
+  height: 40px;
 }
 
 /* ====== Tool Icon Button ====== */
