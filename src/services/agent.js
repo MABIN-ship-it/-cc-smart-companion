@@ -48,6 +48,21 @@ export async function sendMessage(userMessage, state, onProgress, signal, images
     && typeof window.electronAPI.shellExecute === 'function';
 
   if (toolsAvailable) {
+    // 执行模式：纯聊天跳过ReAct，直接simpleChat
+    if (mode === 'execute') {
+      const toolTriggers = ['飞书','feishu','Excel','xls','文件','创建','发送','搜索','打开','运行','执行',
+        '生成','下载','上传','导入','导出','扫描','检查','读取','写入','删除','安装','配置','设置',
+        '多维表格','文档','消息','图片','PPT','网站','Python','脚本','命令','转多维','转成','转成多维',
+        '报价','排班','整改','清单','统计','分析','对比','处理','帮忙','帮我把','帮我','搞','做','弄'];
+      const needsTools = toolTriggers.some(w => userMessage.includes(w));
+      if (!needsTools) {
+        return await simpleChat(userMessage, state, systemPrompt, onProgress, signal, images);
+      }
+      const result = await runReActLoop(userMessage, state, key, systemPrompt, onProgress, signal, images);
+      updateLastTask(userMessage.slice(0, 60));
+      return result;
+    }
+
     // 计划模式：只分析不执行
     if (mode === 'plan') {
       return await analyzeAndPlan(userMessage, state, onProgress, signal);

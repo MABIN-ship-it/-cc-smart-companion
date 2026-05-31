@@ -410,14 +410,48 @@ function buildModeSection(mode) {
  * @param {string} mode - 当前模式: 'chat' | 'plan' | 'execute' | 'cron'
  * @returns {string}
  */
+/**
+ * 动态附件——每轮对话前注入的上下文提醒
+ * 告诉模型当前时间、活跃项目、用户规则
+ */
+function buildAttachments(state) {
+  const lines = ['<system-reminder>'];
+  const now = new Date();
+  lines.push(`当前时间: ${now.toLocaleString('zh-CN')}`);
+
+  const profile = state?.userProfile || {};
+  const projects = profile['当前项目'];
+  if (projects) {
+    const projText = Array.isArray(projects) ? projects.join('、') : projects;
+    lines.push(`活跃项目: ${projText}`);
+  }
+
+  const rules = profile['决策规则'];
+  if (rules && Array.isArray(rules) && rules.length > 0) {
+    const ruleText = rules.map(r => r.value || r).join('；');
+    lines.push(`用户规则: ${ruleText}`);
+  }
+
+  const feishuStatus = state?.feishuStatus;
+  if (feishuStatus === 'connected') lines.push('飞书: 已连接');
+
+  const project = state?.currentProject;
+  if (project) lines.push(`工作区: ${project}`);
+
+  const mode = state?.inputMode || 'execute';
+  lines.push(`当前模式: ${mode}`);
+
+  lines.push('</system-reminder>');
+  lines.push(''); // 空行分隔
+  return lines.join('\n');
+}
+
 export function buildSystemPrompt(state, userMessage, mode = 'chat') {
   const ragSection = buildRAGSection(userMessage);
   const modeSection = buildModeSection(mode);
-
   const projectSection = getProjectContext();
-
-  // 个性化偏好（从用户反馈中学习）
   const personalizedSection = getPersonalizedPrompt();
+  const attachments = buildAttachments(state);
 
   const sections = [
     buildIdentitySection(),
@@ -427,6 +461,7 @@ export function buildSystemPrompt(state, userMessage, mode = 'chat') {
     ragSection,
     buildPersonalitySection(state),
     personalizedSection,
+    attachments,       // <system-reminder> 动态附件
     modeSection,
     buildExecutionRules(),
   ];
@@ -434,7 +469,6 @@ export function buildSystemPrompt(state, userMessage, mode = 'chat') {
   const prompt = sections.filter(Boolean).join('\n\n');
   const estimatedTokens = estimateSystemPromptTokens(prompt);
 
-  // 如果超长（超过8000 tokens），精简（保留RAG因为它是精准的）
   if (estimatedTokens > 8000) {
     return buildCompactSystemPrompt(state, ragSection);
   }
