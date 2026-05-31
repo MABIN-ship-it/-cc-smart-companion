@@ -172,8 +172,26 @@ export async function applyForgettingRules() {
 
 export function getHotMemories(limit = 10) {
   return loadMemories()
-    .filter(m => m.level === 'hot')
+    .filter(m => m.level === 'hot' || m.level === 'warm')
     .sort((a, b) => (b.importance || 0) - (a.importance || 0))
+    .slice(0, limit);
+}
+
+/** 按重要性评分排序所有记忆，高价值的不被时间淹没 */
+export function getImportantMemories(limit = 8) {
+  const memories = loadMemories();
+  const now = Date.now();
+  return memories
+    .map(m => {
+      let score = m.importance || 3;
+      if (m.type === 'rule' || m.type === 'decision') score += 10;
+      if (m.mentions > 3) score += 5;
+      if (m.content && /必须|不能|不许|不准|不要|禁止|讨厌|千万别/.test(m.content)) score += 10;
+      score -= Math.floor((now - (m.lastAccessed || m.createdAt)) / (7 * 86400000));
+      return { ...m, _score: score };
+    })
+    .filter(m => m._score > 0)
+    .sort((a, b) => b._score - a._score)
     .slice(0, limit);
 }
 

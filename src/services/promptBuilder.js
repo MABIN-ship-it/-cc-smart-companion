@@ -19,6 +19,7 @@ import { getProjectContext } from './projectContext';
 import { getLessonsContext } from './lessonsLearned';
 import { getPersonalizedPrompt } from './preferenceLearner';
 import { estimateSystemPromptTokens } from '../utils/tokenCounter';
+import { getImportantMemories } from './memory';
 import { searchKnowledge, buildRAGContext, listDocuments } from './knowledgeBase';
 import { getWebsiteBuilderPrompt } from './websiteBuilder';
 import { getKnowledgeSystem } from '../knowledge/KnowledgeSystem.js';
@@ -278,11 +279,11 @@ function buildPersonalitySection(state) {
     } catch {}
   }
 
-  // 记忆（合并 state.memories + KS记忆）
+  // 记忆（按重要性评分排序，不只是热记忆）
   const ksCtx = getKSPromptContext(state);
-  const hotMemories = state?.memories?.filter(m => m.level === 'hot') || [];
+  const importantMemories = getImportantMemories(8).map(m => m.content);
   const ksMemories = ksCtx.memories || [];
-  const allMemories = [...hotMemories.map(m => m.content), ...ksMemories];
+  const allMemories = [...importantMemories, ...ksMemories];
   if (allMemories.length > 0) {
     parts.push(`\n## 关于用户的记忆`);
     for (const content of allMemories.slice(0, 10)) {
