@@ -54,14 +54,13 @@ export default function ToolboxPanel() {
   });
   const installAndAlert = async (file, name) => {
     if (!window.electronAPI?.installPlugin) { alert('插件安装需要 Electron 环境'); return; }
-    // FileReader 读文本，再 btoa
     const text = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
       reader.readAsText(file, 'utf-8');
     });
-    const r = await window.electronAPI.installPlugin(btoa(unescape(encodeURIComponent(text))));
+    const r = await window.electronAPI.installPlugin(text);
     alert(r.success ? `"${r.name || name}" 插件更新成功！请重启CC。` : `安装失败: ${r.error}`);
   };
   const handlePluginDrop = async (e) => {

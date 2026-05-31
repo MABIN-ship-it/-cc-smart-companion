@@ -1292,8 +1292,9 @@ ipcMain.handle('feishu:getSession', async () => {
 
 ipcMain.handle('plugin:install', async (_event, source) => {
   try {
-    // 全部走 base64（文件路径在浏览器侧被伪造）
-    const content = Buffer.from(source, 'base64').toString('utf-8');
+    // source 直接是文本内容（前端 FileReader.readAsText 读取）
+    const content = typeof source === 'string' ? source : '';
+    if (!content) return { success: false, error: '插件内容为空' };
     const idMatch = content.match(/id:\s*['"]([^'"]+)['"]/);
     const nameMatch = content.match(/name:\s*['"]([^'"]+)['"]/);
     if (!idMatch) return { success: false, error: '插件文件格式错误：缺少 id' };
