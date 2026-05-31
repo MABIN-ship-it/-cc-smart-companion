@@ -863,15 +863,7 @@ body {
   border-radius: 4px;
 }
 
-/* 形象库固定按钮（工具栏上方，直接 append 到 body） */
-.avatar-fixed {
-  position: fixed !important;
-  left: 12px !important;
-  top: calc(50% - 220px) !important;
-  z-index: 2147483647 !important;
-  width: 40px !important;
-  height: 40px !important;
-}
+/* 形象库按钮（注入到 toolbar-left 中，继承 toolbar 的所有样式） */
 
 /* ====== Tool Icon Button ====== */
 
