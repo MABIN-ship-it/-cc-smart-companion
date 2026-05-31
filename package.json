@@ -1,0 +1,110 @@
+{
+  "name": "cc-smart-companion",
+  "version": "1.0.0",
+  "description": "华人牌2026款CC - 桌面AI智能伙伴",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "predeploy": "npm test && npm run build",
+    "verify": "npm test && npm run build && npm run test:e2e",
+    "pack": "vite build && electron-builder --win portable",
+    "dist": "vite build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.ccsmart.companion",
+    "productName": "CC你的终身好友",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "http://1.14.67.28/download/"
+      }
+    ],
+    "directories": {
+      "output": "../release"
+    },
+    "extraResources": [
+      {
+        "from": "python",
+        "to": "python"
+      }
+    ],
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "language": 2052,
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "unicode": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.65.0",
+    "electron-updater": "^6.8.3",
+    "exceljs": "^4.4.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tesseract.js": "^5.1.1",
+    "three": "^0.184.0",
+    "ws": "^8.21.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^42.1.0",
+    "electron-builder": "^26.8.1",
+    "jsdom": "^29.1.1",
+    "vite": "^5.4.21",
+    "vitest": "^4.1.7"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MABIN-ship-it/-cc-smart-companion"
+  },
+  "bugs": {
+    "url": "https://github.com/MABIN-ship-it/-cc-smart-companion/issues"
+  },
+  "homepage": "https://github.com/MABIN-ship-it/-cc-smart-companion#readme",
+  "keywords": [
+    "ai-companion",
+    "desktop-assistant",
+    "3d-character",
+    "long-term-memory",
+    "knowledge-graph",
+    "electron",
+    "feishu-integration",
+    "ai-agent"
+  ]
+}
