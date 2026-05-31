@@ -1290,10 +1290,21 @@ ipcMain.handle('feishu:getSession', async () => {
 
 // ====== 插件安装 ======
 
-ipcMain.handle('plugin:install', async (_event, filePath) => {
+ipcMain.handle('plugin:install', async (_event, source) => {
   try {
-    if (!fs.existsSync(filePath)) return { success: false, error: '插件文件不存在' };
-    const content = fs.readFileSync(filePath, 'utf-8');
+    let content;
+    // source 可能是文件路径，也可能是 base64 内容
+    if (typeof source === 'string' && source.length > 0 && source[0] !== '{' && source.length < 500) {
+      // 看起来像文件路径
+      if (fs.existsSync(source)) {
+        content = fs.readFileSync(source, 'utf-8');
+      } else {
+        return { success: false, error: '插件文件不存在: ' + source };
+      }
+    } else {
+      // base64 编码的文件内容
+      content = Buffer.from(source, 'base64').toString('utf-8');
+    }
     const idMatch = content.match(/id:\s*['"]([^'"]+)['"]/);
     const nameMatch = content.match(/name:\s*['"]([^'"]+)['"]/);
     if (!idMatch) return { success: false, error: '插件文件格式错误：缺少 id' };
@@ -1302,7 +1313,7 @@ ipcMain.handle('plugin:install', async (_event, filePath) => {
     const pluginDir = path.join(os.homedir(), '.cc', 'plugins');
     fs.mkdirSync(pluginDir, { recursive: true });
     const destPath = path.join(pluginDir, `${pluginId}.cc-plugin.js`);
-    fs.copyFileSync(filePath, destPath);
+    fs.writeFileSync(destPath, content, 'utf-8');
     return { success: true, id: pluginId, name: pluginName, path: destPath };
   } catch (e) {
     return { success: false, error: e.message };
