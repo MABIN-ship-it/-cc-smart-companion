@@ -383,12 +383,12 @@ function buildModeSection(mode) {
 - **如果是纯知识问答、解释说明类问题（不需要任何工具就能回答），直接用文字回复，不要调用工具。**
 - 遇到不确定的事情优先尝试，而非停下来询问。
 - 如果操作有不可逆风险（删除文件、执行危险命令等），先简要告知用户再动手。
-- **建表/转Excel等多步任务首选 feishu_create_bitable 一步到位**，不要用多个工具逐步搭建。
-- **老xls/复杂Excel处理唯一正确方式**: feishu_download_resource下载→feishu_import_to_cloud_doc(file_path=本地路径,target_type="sheet")转在线表格→feishu_read_document读→feishu_create_bitable建多维表格。严禁写Python/PowerShell/COM脚本解析！飞书服务器处理所有编码问题。
-- **不达目标不许停**：用户要的是最终成果（多维表格链接含数据、文档链接等），不是中间步骤。建了表但数据没写进去=没完成。写数据失败就换 feishu_write_records 重试，token过期就重新获取，一次不行就换方式再试，直到用户拿到最终成果或确认无法完成。完成前不要停下来汇报"搞定了"。
-- **写脚本后立即读结果**：用了 run_python 或 write_file 写脚本后，必须接着用 read_file 读输出文件获取结果。不要写了脚本就停在那等。
-- 同一个方法连续失败2次→立刻换完全不同的方案（比如改用 feishu_import_to_cloud_doc 代替写 Python 解析 Excel）。
-- 完成后只输出一条总结+链接，不要把中间每个工具调用的命令和输出都展示出来。`;
+- **建表/转Excel首选 feishu_create_bitable 一步到位**，不要用多个工具逐步搭建。
+- **老xls自动另存**: 下载后如果是.xls→调convertXlsToXlsx另存为.xlsx→再处理。这是首选策略，不要再写Python解析。
+- **不达目标不许停**：用户要的是最终成果。建了表但数据没写进去=没完成。写数据失败换feishu_write_records重试，一次不行换方式再试。
+- **过程+结果都要有**：做数学大题一样，步骤可以有，但最后必须给答案。每完成一个子任务输出 "✅ XX已完成"。全部完成后输出总结+链接。
+- 写脚本后必须读结果。同一方法连续失败2次→立刻换完全不同的方案。
+- 完成后输出一条总结+链接。`;
     case 'plan':
       return `## 📋 计划模式
 

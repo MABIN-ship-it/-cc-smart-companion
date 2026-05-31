@@ -108,3 +108,12 @@ export function ChatHistoryIcon() {
     </svg>
   );
 }
+
+export function AvatarIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="5"/>
+      <path d="M4 22c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+    </svg>
+  );
+}

@@ -425,6 +425,24 @@ export default function CharacterScene({ animParams }) {
     };
     window.addEventListener('resize', handleWindowResize);
 
+    // 监听形象库模型切换
+    const handleSwitchModel = (e) => {
+      const { path } = e.detail || {};
+      if (path && modelRef.current) {
+        const loader = new GLTFLoader();
+        loader.load(path, (gltf) => {
+          modelRef.current.parent?.remove(modelRef.current);
+          modelRef.current = gltf.scene;
+          const box = new THREE.Box3();
+          gltf.scene.traverse(c => { if (c.isMesh) box.expandByObject(c); });
+          const s = box.getSize(new THREE.Vector3());
+          gltf.scene.scale.setScalar(2.8 / Math.max(s.y, 0.001));
+          modelGroup.add(gltf.scene);
+        }, undefined, () => {});
+      }
+    };
+    window.addEventListener('cc:switchModel', handleSwitchModel);
+
     // 监听 Electron 全屏 IPC（如果可用）
     let cleanupFsListener = null;
     if (window.electronAPI?.onFullscreenChanged) {
@@ -436,6 +454,7 @@ export default function CharacterScene({ animParams }) {
     return () => {
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleWindowResize);
+      window.removeEventListener('cc:switchModel', handleSwitchModel);
       resizeObserver.disconnect();
       if (cleanupFsListener) cleanupFsListener();
       renderer.dispose();

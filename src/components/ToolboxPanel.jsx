@@ -2,7 +2,6 @@
  * 工具箱面板 — 管理集成应用
  */
 import { useState, useEffect } from 'react';
-import AvatarLibrary from './AvatarLibrary';
 import { useApp } from '../store/AppContext';
 import { saveFeishuConfig, getFeishuConfig, isFeishuConfigured, testConnection, checkPermissions, getFeishuPermissionUrl, copyScopeToClipboard } from '../services/feishu';
 import { getBotConfig, saveBotConfig, getMonitorableChats, getBotStats } from '../services/feishuBotService';
@@ -43,7 +42,6 @@ export default function ToolboxPanel() {
   const [checkingPerms, setCheckingPerms] = useState(false);
   const [botConfig, setBotConfig] = useState(getBotConfig());
   const [showBotConfig, setShowBotConfig] = useState(false);
-  const [showAvatarLibrary, setShowAvatarLibrary] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
   const feishuConnecting = state.feishuStatus === 'connecting';
@@ -200,14 +198,14 @@ export default function ToolboxPanel() {
           </div>
         </div>
 
-        {/* 形象库卡片 */}
-        <div className="toolbox-app-card" onClick={() => { dispatch({ type: 'TOGGLE_TOOLBOX' }); setShowAvatarLibrary?.(true); }}>
+        {/* 微信卡片 */}
+        <div className="toolbox-app-card disabled" style={{ position: 'relative' }}>
           <div className="toolbox-app-icon-wrap">
-            <span style={{ fontSize: 36 }}>🎭</span>
+            <span style={{ fontSize: 36 }}>💬</span>
           </div>
-          <div className="toolbox-app-name">形象库</div>
-          <div className="toolbox-app-subtitle">3D角色·换装</div>
-          <div className="toolbox-app-status">点击进入</div>
+          <div className="toolbox-app-name">微信</div>
+          <div className="toolbox-app-subtitle">消息·联系人</div>
+          <div className="toolbox-app-status">待安装</div>
         </div>
       </div>
 
@@ -450,13 +448,6 @@ export default function ToolboxPanel() {
         </div>
       )}
 
-      {/* 形象库 */}
-      {showAvatarLibrary && (
-        <AvatarLibrary
-          onClose={() => setShowAvatarLibrary(false)}
-          onSwitchAvatar={(av) => console.log('[Avatar] 切换:', av.name, av.path)}
-        />
-      )}
     </div>
   );
 }

@@ -1288,6 +1288,64 @@ ipcMain.handle('feishu:getSession', async () => {
   return session || { sessionId: null };
 });
 
+// ====== 插件安装 ======
+
+ipcMain.handle('plugin:install', async (_event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return { success: false, error: '插件文件不存在' };
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const idMatch = content.match(/id:\s*['"]([^'"]+)['"]/);
+    const nameMatch = content.match(/name:\s*['"]([^'"]+)['"]/);
+    if (!idMatch) return { success: false, error: '插件文件格式错误：缺少 id' };
+    const pluginId = idMatch[1];
+    const pluginName = nameMatch?.[1] || pluginId;
+    const pluginDir = path.join(os.homedir(), '.cc', 'plugins');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    const destPath = path.join(pluginDir, `${pluginId}.cc-plugin.js`);
+    fs.copyFileSync(filePath, destPath);
+    return { success: true, id: pluginId, name: pluginName, path: destPath };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('plugin:replace', async (_event, pluginId, filePath) => {
+  try {
+    const pluginDir = path.join(os.homedir(), '.cc', 'plugins');
+    const backupDir = path.join(pluginDir, 'backup');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const oldPath = path.join(pluginDir, `${pluginId}.cc-plugin.js`);
+    if (fs.existsSync(oldPath)) {
+      const backupPath = path.join(backupDir, `${pluginId}_${Date.now()}.cc-plugin.js`);
+      fs.copyFileSync(oldPath, backupPath);
+    }
+    fs.copyFileSync(filePath, oldPath);
+    return { success: true, id: pluginId };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// ====== Excel .xls 转 .xlsx ======
+
+ipcMain.handle('excel:convertXlsToXlsx', async (_event, xlsPath) => {
+  try {
+    if (!fs.existsSync(xlsPath)) return { success: false, error: '文件不存在' };
+    const xlsxPath = xlsPath.replace(/\.xls$/i, '_converted.xlsx');
+    // PowerShell COM 一行转换
+    const psScript = `$e=New-Object -ComObject Excel.Application; $e.Visible=$false; $w=$e.Workbooks.Open('${xlsPath.replace(/\\/g,'\\\\')}'); $w.SaveAs('${xlsxPath.replace(/\\/g,'\\\\')}',51); $w.Close(); $e.Quit(); Write-Output 'OK'`;
+    const result = await new Promise((resolve) => {
+      execFile('powershell.exe', ['-Command', psScript], { timeout: 30000 }, (err, stdout) => {
+        if (err) resolve({ success: false, error: err.message });
+        else resolve({ success: true, path: xlsxPath });
+      });
+    });
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('feishu:refreshSession', async () => {
   refreshFeishuSession();
   return { success: true };
