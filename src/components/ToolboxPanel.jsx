@@ -184,30 +184,90 @@ export default function ToolboxPanel() {
 
       <div className="toolbox-grid">
         {/* 飞书卡片 */}
-        <div
-          className={`toolbox-app-card${feishuConnected ? ' connected' : ''}${feishuConnecting ? ' connecting' : ''}`}
-          onClick={openFeishuCard}
-        >
-          <div className="toolbox-app-icon-wrap">
-            <FeishuIcon size={44} />
-          </div>
+        <div className={`toolbox-app-card${feishuConnected?' connected':''}${feishuConnecting?' connecting':''}`}
+          onClick={openFeishuCard} style={{ position: 'relative' }}>
+          <div className="toolbox-app-icon-wrap"><FeishuIcon size={44} /></div>
           <div className="toolbox-app-name">飞书</div>
           <div className="toolbox-app-subtitle">消息·文档·多维表格</div>
-          <div className={`toolbox-app-status${feishuConnected ? ' online' : feishuConnecting ? ' connecting' : ''}`}>
-            <span className="toolbox-status-dot" />
-            {feishuConnected ? '已连接' : feishuConnecting ? '连接中...' : '未连接'}
+          <div className={`toolbox-app-status${feishuConnected?' online':feishuConnecting?' connecting':''}`}>
+            <span className="toolbox-status-dot"/>{feishuConnected?'已连接':feishuConnecting?'连接中...':'未连接'}
           </div>
+          <div className="toolbox-app-badge">内置</div>
+          <span className="plugin-replace-btn" title="为了您更好的使用体验，您可以更换更优质的插件"
+            onClick={async (e) => { e.stopPropagation(); const f = await pickPluginFile(); if (f) installAndAlert(f, '飞书'); }}>
+            更换
+          </span>
         </div>
 
         {/* 微信卡片 */}
-        <div className="toolbox-app-card" style={{ position: 'relative', opacity: 0.7 }} onClick={() => setShowWechatGuide?.(true)}>
-          <div className="toolbox-app-icon-wrap">
-            <span style={{ fontSize: 36 }}>💬</span>
-          </div>
+        <div className="toolbox-app-card" style={{ position: 'relative', opacity: 0.75 }} onClick={() => setShowWechatGuide(true)}>
+          <div className="toolbox-app-icon-wrap"><span style={{ fontSize: 36 }}>💬</span></div>
           <div className="toolbox-app-name">微信</div>
           <div className="toolbox-app-subtitle">消息·联系人</div>
-          <div className="toolbox-app-status">点击安装指引</div>
+          <div className="toolbox-app-status">待安装</div>
+          <div className="toolbox-app-badge">内置</div>
+          <span className="plugin-replace-btn" title="为了您更好的使用体验，您可以更换更优质的插件"
+            onClick={async (e) => { e.stopPropagation(); const f = await pickPluginFile(); if (f) installAndAlert(f, '微信'); }}>
+            更换
+          </span>
         </div>
+      </div>
+
+      {/* 安装新插件教程 */}
+      <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid var(--border-subtle,#333)' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#ddd', marginBottom: 12 }}>📦 安装新插件</div>
+
+        <div style={{ fontSize: 12, lineHeight: 1.8, color: '#aaa', marginBottom: 8 }}>
+          <b>什么是插件？</b><br/>
+          插件是 CC 的功能扩展包，可以让 CC 连接更多平台：<br/>
+          微信、钉钉、Telegram、美团、小红书、抖音、闲鱼、淘宝、京东、知乎...
+        </div>
+
+        <div style={{ fontSize: 12, lineHeight: 1.8, color: '#aaa', marginBottom: 8 }}>
+          <b>怎么安装？</b><br/>
+          1. 准备 <code>.cc-plugin.js</code> 文件<br/>
+          2. 拖拽到下方区域或点击选择<br/>
+          3. 重启 CC 生效
+        </div>
+
+        <div onDrop={handlePluginDrop} onDragOver={e => e.preventDefault()}
+          style={{ border: '2px dashed #555', borderRadius: 10, padding: 16, textAlign: 'center', cursor: 'pointer', marginBottom: 12 }}>
+          <label style={{ cursor: 'pointer', color: '#7b7bff', fontSize: 13 }}>
+            📁 拖拽插件文件到此处 或 点击选择文件
+            <input type="file" accept=".cc-plugin.js" onChange={handlePluginFile} style={{ display: 'none' }}/>
+          </label>
+        </div>
+
+        <div style={{ fontSize: 12, lineHeight: 1.8, color: '#888' }}>
+          <b>哪里下载插件？</b><br/>
+          • CC 官方插件仓库（即将上线）<br/>
+          • 开发者提供的 .cc-plugin.js<br/>
+          • 自己编写（见下方开发指南）
+        </div>
+
+        <details style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+          <summary style={{ cursor: 'pointer', color: '#aaa' }}>🛠 怎么开发 .cc-plugin.js？</summary>
+          <pre style={{ background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 6, overflowX: 'auto', fontSize: 11, marginTop: 6, color: '#bbb' }}>{`// my-plugin.cc-plugin.js
+module.exports = {
+  id: 'my-plugin',
+  name: '我的插件',
+  icon: '🔧',
+  subtitle: '功能描述',
+  version: '1.0.0',
+  tools: [{
+    name: 'do_something',
+    description: '做什么',
+    input_schema: {
+      type: 'object',
+      properties: { ... },
+    },
+  }],
+  executors: {
+    do_something: async (ctx) => { /* 逻辑 */ },
+  },
+};`}</pre>
+          <p style={{ marginTop: 4 }}>写好保存为 .cc-plugin.js，拖到上方上传区即可安装。详细文档即将随开源发布。</p>
+        </details>
       </div>
 
       {/* 微信安装指引弹窗 */}

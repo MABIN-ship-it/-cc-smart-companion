@@ -834,6 +834,35 @@ body {
   margin: 6px 8px;
 }
 
+/* Plugin replace button */
+.plugin-replace-btn {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.toolbox-app-card:hover .plugin-replace-btn {
+  opacity: 1;
+}
+.plugin-replace-btn:hover {
+  color: var(--accent-light, #7b7bff);
+  text-decoration: underline;
+}
+.toolbox-app-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 9px;
+  color: var(--text-muted, #666);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 /* 形象库固定按钮（工具栏上方） */
 .avatar-library-btn {
   position: fixed !important;
