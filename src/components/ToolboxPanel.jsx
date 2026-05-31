@@ -213,22 +213,49 @@ export default function ToolboxPanel() {
       {/* 微信安装指引弹窗 */}
       {showWechatGuide && (
         <div className="feishu-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowWechatGuide(false); }}>
-          <div className="feishu-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+          <div className="feishu-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <div className="feishu-modal-header">
               <div className="feishu-modal-title-row">
                 <span style={{ fontSize: 28 }}>💬</span>
-                <span style={{ fontWeight: 700, fontSize: 16 }}>微信插件安装指引</span>
+                <span style={{ fontWeight: 700, fontSize: 16 }}>微信插件安装</span>
               </div>
               <button className="feishu-modal-close" onClick={() => setShowWechatGuide(false)}>✕</button>
             </div>
             <div style={{ padding: 16, fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
-              <p>微信插件需要 <b>Chatlog</b> 工具支持。</p>
-              <p>1. 下载并安装 Chatlog</p>
-              <p>2. 启动 Chatlog 服务（默认端口 5030）</p>
-              <p>3. 在下方"安装插件"区上传 <code>wechat.cc-plugin.js</code></p>
-              <p>4. 刷新工具箱即可看到微信变为"已安装"</p>
-              <p style={{ marginTop: 8, color: 'var(--text-muted)', fontSize: 11 }}>
-                Chatlog 是一个独立的微信聊天记录导出工具，CC 通过它读取微信消息。
+              <p><b>方式一：直接上传插件文件</b></p>
+              <label style={{
+                display: 'block', margin: '8px 0', padding: 14, textAlign: 'center',
+                border: '2px dashed #7b7bff', borderRadius: 10, cursor: 'pointer',
+                color: '#7b7bff', fontSize: 14, fontWeight: 600,
+              }}>
+                📁 点击此处选择微信插件文件（.cc-plugin.js）
+                <input type="file" accept=".cc-plugin.js" onChange={async (e) => {
+                  const file = e.target?.files?.[0];
+                  if (!file) return;
+                  if (window.electronAPI?.installPlugin) {
+                    const result = await window.electronAPI.installPlugin(file.path || file.name);
+                    alert(result.success ? `"${result.name}" 安装成功！请重启CC。` : `安装失败: ${result.error}`);
+                  } else {
+                    alert('请重启CC后再试');
+                  }
+                }} style={{ display: 'none' }} />
+              </label>
+
+              <p style={{ marginTop: 12 }}><b>方式二：手动安装</b></p>
+              <p>1. 将 <code>wechat.cc-plugin.js</code> 放到以下目录：</p>
+              <p style={{ background: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: 4, fontSize: 11, fontFamily: 'monospace' }}>
+                C:\Users\{'用户名'}\.cc\plugins\
+              </p>
+              <p>2. 重启 CC 即可在工具箱看到微信</p>
+
+              <p style={{ marginTop: 12 }}><b>关于 Chatlog</b></p>
+              <p>Chatlog 是一个开源的微信聊天记录导出工具，CC 通过它实现：</p>
+              <p>• 📨 接收微信消息（私聊+群聊）</p>
+              <p>• 📤 发送微信消息（文本+图片+文件）</p>
+              <p>• 📅 按日期查询历史消息</p>
+              <p>• 🔗 消息上下文连续（不会每次开新话题）</p>
+              <p style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 11 }}>
+                需要先在电脑上安装并启动 Chatlog，然后安装微信插件即可使用。
               </p>
             </div>
           </div>

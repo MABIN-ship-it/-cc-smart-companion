@@ -839,7 +839,9 @@ body {
   position: fixed !important;
   left: 12px !important;
   top: calc(50% - 220px) !important;
-  z-index: 10 !important;
+  z-index: 999 !important;
+  width: 40px !important;
+  height: 40px !important;
 }
 
 /* ====== Tool Icon Button ====== */
