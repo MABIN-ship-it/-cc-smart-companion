@@ -54,16 +54,12 @@ export default function ToolboxPanel() {
   });
   const installAndAlert = async (file, name) => {
     if (!window.electronAPI?.installPlugin) { alert('插件安装需要 Electron 环境'); return; }
-    let payload = file.path;
-    if (!payload) {
-      // 没有 path → 读文件内容转 base64
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      payload = btoa(binary);
-    }
-    const r = await window.electronAPI.installPlugin(payload);
+    // 读文件内容转 base64（不用 file.path，浏览器会伪造假路径）
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const r = await window.electronAPI.installPlugin(btoa(binary));
     alert(r.success ? `"${r.name || name}" 插件更新成功！请重启CC。` : `安装失败: ${r.error}`);
   };
   const handlePluginDrop = async (e) => {
