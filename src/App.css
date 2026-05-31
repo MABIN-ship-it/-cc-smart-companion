@@ -850,7 +850,25 @@ body {
 }
 .plugin-replace-btn:hover {
   color: var(--accent-light, #7b7bff);
-  text-decoration: underline;
+}
+.plugin-replace-btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(20, 18, 40, 0.95);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.plugin-replace-btn:hover::after {
+  opacity: 1;
 }
 .toolbox-app-badge {
   position: absolute;

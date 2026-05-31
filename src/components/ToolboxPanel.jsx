@@ -216,7 +216,7 @@ export default function ToolboxPanel() {
             <span className="toolbox-status-dot"/>{feishuConnected?'已连接':feishuConnecting?'连接中...':'未连接'}
           </div>
           <div className="toolbox-app-badge">内置</div>
-          <span className="plugin-replace-btn" title="为了您更好的使用体验，您可以更换更优质的插件"
+          <span className="plugin-replace-btn" data-tooltip="为了您更好的使用体验，您可以更换更优质的插件"
             onClick={async (e) => { e.stopPropagation(); const f = await pickPluginFile(); if (f) installAndAlert(f, '飞书'); }}>
             更换
           </span>
@@ -229,7 +229,7 @@ export default function ToolboxPanel() {
           <div className="toolbox-app-subtitle">消息·联系人</div>
           <div className="toolbox-app-status">待安装</div>
           <div className="toolbox-app-badge">内置</div>
-          <span className="plugin-replace-btn" title="为了您更好的使用体验，您可以更换更优质的插件"
+          <span className="plugin-replace-btn" data-tooltip="为了您更好的使用体验，您可以更换更优质的插件"
             onClick={async (e) => { e.stopPropagation(); const f = await pickPluginFile(); if (f) installAndAlert(f, '微信'); }}>
             更换
           </span>
@@ -332,13 +332,13 @@ module.exports = {
               <p>2. 重启 CC 即可在工具箱看到微信</p>
 
               <p style={{ marginTop: 12 }}><b>关于 Chatlog</b></p>
-              <p>Chatlog 是一个开源的微信聊天记录导出工具，CC 通过它实现：</p>
-              <p>• 📨 接收微信消息（私聊+群聊）</p>
-              <p>• 📤 发送微信消息（文本+图片+文件）</p>
+              <p>Chatlog 是微信聊天记录导出工具，CC 通过它实现：</p>
+              <p>• 📨 读取微信消息（私聊+群聊）</p>
               <p>• 📅 按日期查询历史消息</p>
-              <p>• 🔗 消息上下文连续（不会每次开新话题）</p>
+              <p>• 🖼 提取消息中的图片/文件/语音</p>
               <p style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: 11 }}>
-                需要先在电脑上安装并启动 Chatlog，然后安装微信插件即可使用。
+                ⚠️ 不能像飞书那样实时收发——微信不开放 API。<br/>
+                微信插件适合做消息归档和查询，飞书插件做主力通信。
               </p>
             </div>
           </div>
