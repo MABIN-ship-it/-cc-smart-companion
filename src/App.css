@@ -836,10 +836,10 @@ body {
 
 /* 形象库固定按钮（工具栏上方） */
 .avatar-library-btn {
-  position: fixed;
-  left: 12px;
-  top: calc(50% - 220px);
-  z-index: 10;
+  position: fixed !important;
+  left: 12px !important;
+  top: calc(50% - 220px) !important;
+  z-index: 10 !important;
 }
 
 /* ====== Tool Icon Button ====== */

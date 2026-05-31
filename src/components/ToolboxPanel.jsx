@@ -42,6 +42,7 @@ export default function ToolboxPanel() {
   const [checkingPerms, setCheckingPerms] = useState(false);
   const [botConfig, setBotConfig] = useState(getBotConfig());
   const [showBotConfig, setShowBotConfig] = useState(false);
+  const [showWechatGuide, setShowWechatGuide] = useState(false);
 
   const feishuConnected = state.feishuStatus === 'connected';
   const feishuConnecting = state.feishuStatus === 'connecting';
@@ -199,14 +200,73 @@ export default function ToolboxPanel() {
         </div>
 
         {/* 微信卡片 */}
-        <div className="toolbox-app-card disabled" style={{ position: 'relative' }}>
+        <div className="toolbox-app-card" style={{ position: 'relative', opacity: 0.7 }} onClick={() => setShowWechatGuide?.(true)}>
           <div className="toolbox-app-icon-wrap">
             <span style={{ fontSize: 36 }}>💬</span>
           </div>
           <div className="toolbox-app-name">微信</div>
           <div className="toolbox-app-subtitle">消息·联系人</div>
-          <div className="toolbox-app-status">待安装</div>
+          <div className="toolbox-app-status">点击安装指引</div>
         </div>
+      </div>
+
+      {/* 微信安装指引弹窗 */}
+      {showWechatGuide && (
+        <div className="feishu-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowWechatGuide(false); }}>
+          <div className="feishu-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div className="feishu-modal-header">
+              <div className="feishu-modal-title-row">
+                <span style={{ fontSize: 28 }}>💬</span>
+                <span style={{ fontWeight: 700, fontSize: 16 }}>微信插件安装指引</span>
+              </div>
+              <button className="feishu-modal-close" onClick={() => setShowWechatGuide(false)}>✕</button>
+            </div>
+            <div style={{ padding: 16, fontSize: 13, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+              <p>微信插件需要 <b>Chatlog</b> 工具支持。</p>
+              <p>1. 下载并安装 Chatlog</p>
+              <p>2. 启动 Chatlog 服务（默认端口 5030）</p>
+              <p>3. 在下方"安装插件"区上传 <code>wechat.cc-plugin.js</code></p>
+              <p>4. 刷新工具箱即可看到微信变为"已安装"</p>
+              <p style={{ marginTop: 8, color: 'var(--text-muted)', fontSize: 11 }}>
+                Chatlog 是一个独立的微信聊天记录导出工具，CC 通过它读取微信消息。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 安装插件上传区 */}
+      <div
+        onDrop={async (e) => {
+          e.preventDefault();
+          const file = e.dataTransfer?.files?.[0];
+          if (!file || !file.name.endsWith('.cc-plugin.js')) { alert('请上传 .cc-plugin.js 格式的插件文件'); return; }
+          if (window.electronAPI?.installPlugin) {
+            const result = await window.electronAPI.installPlugin(file.path || URL.createObjectURL(file));
+            alert(result.success ? `插件 "${result.name}" 安装成功！请重启CC生效。` : `安装失败: ${result.error}`);
+          } else {
+            alert('插件安装功能需要 Electron 环境');
+          }
+        }}
+        onDragOver={e => e.preventDefault()}
+        style={{
+          border: '2px dashed #444', borderRadius: 10, padding: 16, textAlign: 'center',
+          marginTop: 16, color: '#888', fontSize: 12, cursor: 'pointer',
+        }}>
+        📦 安装新插件（拖拽 .cc-plugin.js 到此处）
+        <label style={{ display: 'block', color: '#7b7bff', cursor: 'pointer', marginTop: 4 }}>
+          或点击选择文件
+          <input type="file" accept=".cc-plugin.js" onChange={async (e) => {
+            const file = e.target?.files?.[0];
+            if (!file) return;
+            if (window.electronAPI?.installPlugin) {
+              const result = await window.electronAPI.installPlugin(file.path || URL.createObjectURL(file));
+              alert(result.success ? `插件 "${result.name}" 安装成功！` : `安装失败: ${result.error}`);
+            } else {
+              alert('插件安装功能需要 Electron 环境');
+            }
+          }} style={{ display: 'none' }} />
+        </label>
       </div>
 
       {/* 飞书配置弹窗 */}
