@@ -431,14 +431,18 @@ export default function CharacterScene({ animParams }) {
       if (path && modelRef.current) {
         const loader = new GLTFLoader();
         loader.load(path, (gltf) => {
-          modelRef.current.parent?.remove(modelRef.current);
+          const oldModel = modelRef.current;
           modelRef.current = gltf.scene;
+          modelRef.current.parent?.remove(oldModel);
           const box = new THREE.Box3();
           gltf.scene.traverse(c => { if (c.isMesh) box.expandByObject(c); });
           const s = box.getSize(new THREE.Vector3());
           gltf.scene.scale.setScalar(2.8 / Math.max(s.y, 0.001));
           modelGroup.add(gltf.scene);
-        }, undefined, () => {});
+        }, undefined, () => {
+          // 加载失败，保留旧模型不变
+          console.warn('[CharacterScene] 模型加载失败，保留当前角色');
+        });
       }
     };
     window.addEventListener('cc:switchModel', handleSwitchModel);
