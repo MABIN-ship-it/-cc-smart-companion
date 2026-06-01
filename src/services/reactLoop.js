@@ -28,7 +28,7 @@ const MAX_TOOL_OUTPUT = 3000;
 
 // ─── 流式请求辅助：既流式输出到UI，又返回统一格式供工具处理 ───
 
-async function streamingRequest({ model, messages, systemPrompt, tools, onProgress, signal }) {
+async function streamingRequest({ model, messages, systemPrompt, tools, onProgress, signal, onToolUse }) {
   let fullText = '';
   let fullThinking = '';
   const toolUses = [];
@@ -52,6 +52,8 @@ async function streamingRequest({ model, messages, systemPrompt, tools, onProgre
         onProgress?.({ type: 'think', data: fullThinking });
       } else if (frame.type === 'tool_use') {
         toolUses.push(frame.toolUse);
+        // 流式工具执行：不等模型说完，工具已就绪就开跑
+        if (onToolUse) onToolUse(frame.toolUse);
       } else if (frame.type === 'done') {
         fullText = frame.text || fullText;
         stopReason = frame.stopReason;
@@ -258,6 +260,9 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       ? AbortSignal.any([signal, timeoutSignal])
       : timeoutSignal;
 
+    // 流式工具执行：工具到达就开跑，不等模型说完
+    const streamTools = [];
+
     let result = await streamingRequest({
       model,
       messages: conversation,
@@ -265,7 +270,23 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       tools,
       onProgress: wrapProgress,
       signal: fetchSignal,
+      onToolUse: (toolUse) => {
+        streamTools.push(toolUse);
+        if (toolExists(toolUse.name)) {
+          executeTool(toolUse.name, toolUse.input).then(r => {
+            toolUse._preResult = r;
+          }).catch(() => {});
+        }
+      },
     });
+
+    // 注入已预执行完成的工具结果
+    if (!result.error && result.toolUses) {
+      for (const tu of result.toolUses) {
+        const st = streamTools.find(s => s.id === tu.id);
+        if (st?._preResult) tu._preResult = st._preResult;
+      }
+    }
 
     // 流式400时回退到非流式（DeepSeek Anthropic兼容层已知问题）
     if (result.error && result.error.includes('400')) {
@@ -343,6 +364,11 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     if (independentTools.length > 0) {
       const parallelResults = await Promise.all(
         independentTools.map(async (tu) => {
+          // 流式预执行：工具在模型输出时就跑完了，直接复用
+          if (tu._preResult !== undefined) {
+            const r = tu._preResult;
+            return { tu, result: typeof r === 'string' ? r : JSON.stringify(r) };
+          }
           const displayName = tu.name;
           onProgress?.({ type: 'tool_call', data: { id: tu.id, name: tu.name, input: tu.input, displayName } });
 
