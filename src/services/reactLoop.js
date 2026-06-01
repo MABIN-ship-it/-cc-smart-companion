@@ -228,6 +228,14 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     iteration++;
 
+    // 自动压缩：上下文超过50000字符时截掉最早的非重要消息
+    const allContent = conversation.map(m => typeof m.content === 'string' ? m.content : JSON.stringify(m.content)).join('');
+    if (allContent.length > 50000 && conversation.length > 6) {
+      const systemMsgs = conversation.filter(m => m.role === 'system');
+      const recentMsgs = conversation.filter(m => m.role !== 'system').slice(-8);
+      conversation = [...systemMsgs, ...recentMsgs];
+    }
+
     onProgress?.({
       type: 'status',
       data: iteration === 1 ? '正在分析你的请求...' : '正在继续处理...',
@@ -373,7 +381,11 @@ export async function runReActLoop(userMessage, state, apiKey, systemPrompt, onP
       }
       const duration = Date.now() - startTime;
 
-      const truncated = typeof toolResult === 'string' ? toolResult.slice(0, MAX_TOOL_OUTPUT) : toolResult;
+      // 工具结果摘要：>2000字符 → 截断+标记，不给模型堆原始数据
+      let truncated = typeof toolResult === 'string' ? toolResult.slice(0, MAX_TOOL_OUTPUT) : toolResult;
+      if (typeof truncated === 'string' && truncated.length > 2000) {
+        truncated = `[${tu.name}结果共${toolResult.length}字符，已截断]\n${truncated.slice(0, 2000)}\n...后续内容省略，核心信息已保留`;
+      }
       onProgress?.({ type: 'tool_result', data: { id: tu.id, name: tu.name, result: truncated, duration } });
 
       allToolResults.push({ tool_use_id: tu.id, content: truncated });
