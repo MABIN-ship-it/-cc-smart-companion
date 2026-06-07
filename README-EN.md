@@ -126,4 +126,4 @@ MIT © 2026 Mabincici (马斌)
 
 ---
 
-📧 Contact: Mabincici <1357502777@qq.com>
+📧 Contact: Mabincici <1357502777@qq.com> | 🎵 Douyin Group: 253968290900
