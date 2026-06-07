@@ -20,3 +20,4 @@ delete-test*.js
 cc_feishu_config.json
 cc_feishu_session.json
 win-unpacked/
+CLAUDE.md
