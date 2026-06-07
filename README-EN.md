@@ -1,39 +1,24 @@
-<p align="center">
-  <img src="public/icon.png" width="120" alt="CC Logo" />
-</p>
+# CC - Your Desktop AI Companion
 
-<h1 align="center">CC Smart Companion</h1>
-<h3 align="center">Desktop AI Companion · 16 LLM Providers · Feishu Integration · 3D Avatar</h3>
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey)]()
+[![Electron](https://img.shields.io/badge/electron-42-blue)]()
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" />
-  <img src="https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey" />
-  <img src="https://img.shields.io/badge/tests-237%20unit%20%7C%207%20E2E-brightgreen" />
-  <img src="https://img.shields.io/badge/license-MIT-green" />
-  <img src="https://img.shields.io/badge/electron-42-blue" />
-</p>
+> An open-source AI companion that lives on your Windows desktop — with a 3D character,
+> long-term memory, knowledge graph, and deep Feishu/WeChat integration.
 
-<p align="center">
-  <a href="#-demo">🎬 Demo</a> ·
-  <a href="#-quick-start">🚀 Quick Start</a> ·
-  <a href="#-features">✨ Features</a> ·
-  <a href="#-architecture">🏗️ Architecture</a> ·
-  <a href="#-download">📦 Download</a>
-</p>
+![CC Screenshot](./assets/cc演示界面.png)
 
 ---
 
 ## 🎬 Demo
 
-### Main Interface & 3D Character
-<p align="center">
-  <img src="assets/demo.gif" width="800" alt="CC Demo" />
-</p>
+![CC Demo](./assets/demo.gif)
 
-### AI Task Execution
-<p align="center">
-  <img src="assets/execution.gif" width="800" alt="Execution Demo" />
-</p>
+![AI Task Execution](./assets/execution.gif)
+
+📹 [Download Demo Video](./assets/飞书消息excel表格转换飞书表格演示.mp4) (Feishu Excel → Bitable full flow)
 
 ---
 
@@ -41,158 +26,104 @@
 
 | Feature | Description |
 |---------|-------------|
-| 🤖 **16 LLM Providers** | OpenAI-compatible API. Switch between DeepSeek, Qwen, GLM, Kimi & more |
-| 🎭 **3D Virtual Character** | Three.js r184 real-time rendering, emotions react to conversation |
-| 🪶 **Feishu/Lark Integration** | WebSocket real-time messaging + Bitable + Docs + IM |
-| 🧠 **Knowledge Base RAG** | TF-IDF local search engine, offline knowledge graph, persistent memory |
-| 📊 **Excel → Bitable** | One-click Excel to Feishu Bitable, auto-infer 25+ field types |
-| 💬 **Streaming Thought Panel** | Real-time AI reasoning display, collapsible thinking chain |
-| 🔧 **Tool Call Visualization** | Individual cards per tool call, formatted params, live status |
-| 📝 **Multi-Session** | Persistent chat history, topic switching, session search |
-| 🔊 **TTS Voice** | Local Python TTS engine, character voice replies |
-| 🧩 **Personality Profiling** | Auto-learns user preferences, builds character profile |
-| 🛡️ **237 Unit + 7 E2E Tests** | Full test suite runs on every commit |
+| 🎭 **3D Character** | Mixamo model, expression engine, custom GLB upload |
+| 🧠 **Long-term Memory** | 500+ node knowledge graph, TF-IDF semantic search, hot/warm/cold tiered storage |
+| 👤 **User Profile** | Auto-extracts preferences, rules, work habits from conversations |
+| 🤖 **22 LLM Providers** | OpenAI-compatible API — DeepSeek, Qwen, GLM, Kimi, and more |
+| 📨 **Feishu** | WebSocket real-time messaging, file/image, Bitable, Excel→Bitable one-click |
+| 💬 **WeChat Plugin** | wxhelper integration for message reading |
+| 🔌 **Plugin System** | Drag-and-drop `.cc-plugin.js`, extensible to any platform |
+| 🛠 **Tool Use** | File ops, web search, PPT generation, Python execution |
+| 🤖 **Auto Tasks** | Auto-scans Feishu for pending tasks, generates reports |
+| ⏰ **Scheduled** | Auto-execution at 9/11/15/17/19/24 daily |
+| 🎤 **TTS / STT** | Edge TTS + local faster-whisper voice recognition |
 
----
+## 📸 Screenshots
+
+|<img src="./assets/cc记忆面板.png" width="260"/>|<img src="./assets/cc可视化知识图谱.png" width="260"/>|<img src="./assets/cc知识库.png" width="260"/>|
+|:---:|:---:|:---:|
+| Memory Panel | Knowledge Graph | Knowledge Base |
+
+|<img src="./assets/cc经验教训面板.png" width="260"/>|<img src="./assets/cc支持22种大模型api.png" width="260"/>|<img src="./assets/飞书微信插件面板.png" width="260"/>|
+| Lessons Learned | 22 LLM Providers | Plugin System |
 
 ## 🚀 Quick Start
 
-### Option 1: Download Installer (Recommended)
+### Download Installer
 
-Get the latest `CC-Setup-v1.0.0.zip` from [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases), unzip and run `electron.exe`.
+| Mirror | Download |
+|--------|----------|
+| 🇨🇳 **Gitee** (China) | [Releases](https://gitee.com/mabin-cici/cc-smart-companion-public/releases) |
+| 🌍 **GitHub** (Global) | [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
+
+Download `CC你的终身好友 Setup 1.0.1.exe` and double-click to install.
 
 Requires: **Windows 10/11 x64**
 
-### Option 2: Run from Source
+### Build from Source
 
 ```bash
-git clone git@gitee.com:mabin-cici/cc-smart-companion.git
+# China
+git clone https://gitee.com/mabin-cici/cc-smart-companion-public.git
+# Global
+git clone https://github.com/MABIN-ship-it/-cc-smart-companion.git
+
 cd cc-smart-companion
 npm install
-npm run dev    # Start Vite dev server
-npm start      # Start Electron (in another terminal)
+npm run build
+npx electron .
 ```
 
-### Configure AI Model
+Configure your LLM API Key on first launch.
 
-Fill in any OpenAI-compatible API details in the settings panel:
+## 🧱 Tech Stack
 
-- **API URL**: `https://api.deepseek.com/v1` (or any of the 15 other providers)
-- **API Key**: Your key
-- **Model ID**: `deepseek-chat` (or others)
+`Electron 42` `React 18` `Three.js 0.184` `Vite 5` `Vitest` `Playwright`
 
-> Each model stores its own config. Switch with one click.
-
----
-
-## 🏗️ Architecture
-
-```mermaid
-graph TB
-    subgraph Desktop["Electron Desktop"]
-        UI["React 18 Renderer<br/>3D Avatar · Chat · Panels"]
-        Main["Electron Main Process<br/>IPC · Files · Feishu WS"]
-        Bridge["contextBridge<br/>Secure API Bridge"]
-    end
-
-    subgraph AI["AI Engine"]
-        LLM["16 LLM Providers<br/>OpenAI-compatible"]
-        KB["Knowledge Base RAG<br/>TF-IDF · Graph"]
-        Tools["Tool Engine<br/>15+ Feishu Tools"]
-    end
-
-    subgraph Feishu["Feishu Ecosystem"]
-        WS["WebSocket"]
-        Bitable["Bitable"]
-        Docs["Cloud Docs"]
-        IM["Messaging"]
-    end
-
-    UI --> Bridge --> Main
-    Main --> AI
-    Main --> Feishu
-    AI --> Tools --> Feishu
-```
-
----
-
-## 📂 Project Structure
+## 📁 Structure
 
 ```
-cc-smart-companion/
-├── electron/                 # Electron main process
-│   ├── main.js              # IPC handlers + Feishu integration
-│   ├── preload.js           # contextBridge API
-│   └── feishu-ws.js         # Feishu WebSocket client
-├── src/
-│   ├── components/           # React UI
-│   │   ├── ChatInterface.jsx   # Main chat interface
-│   │   ├── ChatBubbleLayer.jsx # Chat bubbles + thought panel
-│   │   ├── ToolCallCard.jsx    # Tool call cards
-│   │   ├── CharacterScene.jsx  # 3D character (Three.js)
-│   │   └── StageBackground.jsx # 2D holographic backdrop
-│   ├── services/             # Business logic (40 modules)
-│   │   ├── feishu.js           # Feishu API (70+ functions)
-│   │   ├── feishuTools.js      # Feishu tools (15+ tools)
-│   │   ├── sessionManager.js   # Chat sessions
-│   │   ├── knowledgeBase.js    # Knowledge base (TF-IDF + RAG)
-│   │   ├── excelParser.js      # Excel → Bitable parser
-│   │   └── promptBuilder.js    # AI prompt builder
-│   └── store/AppContext.jsx    # Global state
-├── e2e/                      # Playwright E2E tests
-├── python/tts_server.py      # TTS voice service
-├── deploy.bat                # One-click deploy
-└── assets/                   # Screenshots & GIFs
+src/
+  components/    React UI (chat, panels, toolbar, onboarding)
+  services/      Business logic (feishu, memory, AI orchestration, plugins)
+  knowledge/     Knowledge graph (storage, extraction, graph model)
+  store/         Global state (useReducer + Context)
+electron/        Main process + IPC handlers + WebSocket
+e2e/             Playwright E2E tests (7 suites, 40s)
 ```
 
----
+## 🔌 Plugin Development
 
-## 📦 Download
+CC uses `.cc-plugin.js` files. Drag and drop to install:
 
-| Version | Type | Download |
-|---------|------|----------|
-| v1.0.0 | Portable (zip) | [CC-Setup-v1.0.0.zip](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
-| Latest | All formats | [Releases Page](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
+```javascript
+module.exports = {
+  id: 'my-platform',
+  name: 'My Platform',
+  icon: '🔧',
+  subtitle: 'Messaging & Contacts',
+  tools: [{ name: 'do_something', description: 'What it does', input_schema: {} }],
+  executors: { do_something: async (input) => { /* logic */ } },
+};
+```
 
-> Built with electron-builder. Auto-update configured.
-
----
+See the in-app developer guide in the Toolbox for full details.
 
 ## 🧪 Tests
 
 ```bash
 npm test           # 237 unit tests (~20s)
 npm run test:e2e   # 7 E2E tests (~40s)
-npm run verify     # Test + Build + E2E in one command
 ```
 
-All tests run automatically on every `git commit`.
+## 🤝 Contributing
 
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Desktop | Electron 42 |
-| Frontend | React 18 + Vite 5 |
-| 3D | Three.js r184 |
-| AI API | OpenAI-compatible (16 providers) |
-| Feishu SDK | @larksuiteoapi/node-sdk |
-| Excel | ExcelJS + SheetJS |
-| OCR | Tesseract.js |
-| TTS | Python edge-tts |
-| Testing | Vitest + Playwright |
-| Build | electron-builder |
-
----
+Issues and PRs welcome.
 
 ## 📄 License
 
-MIT License
+MIT © 2026 Mabincici (马斌)
 
 ---
 
-<p align="center">
-  <sub>Made with ❤️ by CC Team</sub>
-</p>
+📧 Contact: Mabincici <1357502777@qq.com>
