@@ -17,3 +17,6 @@ electron-test*.js
 electron_diag.txt
 update-and-run.bat
 delete-test*.js
+cc_feishu_config.json
+cc_feishu_session.json
+win-unpacked/
