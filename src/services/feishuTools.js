@@ -810,7 +810,7 @@ export async function feishuConvertExcelToBitable(input) {
       const fieldsToCreate = sheet.fields.slice(0, 100);
       const normalizedFields = normalizeFields(fieldsToCreate);
       const tableResult = await addTable(appToken, tableName, normalizedFields);
-      const tableId = tableResult?.table?.table_id;
+      const tableId = tableResult?.table?.table_id || tableResult?.table_id;
       if (!tableId) {
         const apiErr = tableResult?.msg || tableResult?.error || JSON.stringify(tableResult).slice(0, 100);
         results.push(`表"${tableName}": 创建失败 (API返回: ${apiErr})`);
@@ -838,32 +838,35 @@ export async function feishuConvertExcelToBitable(input) {
             const fieldType = fieldTypes[key];
             if (!fieldType) { cleanFields[key] = raw; continue; }
 
-            // 根据字段类型清洗值
+            // 根据字段类型清洗值（非数字→跳过，非日期→跳过，防止API拒绝）
             switch (fieldType) {
               case 2: // number
-              case 22: // currency
+              case 22: { // currency
                 const num = parseFloat(raw.replace(/[¥$€£,\s]/g, ''));
-                cleanFields[key] = isNaN(num) ? raw : num;
+                if (!isNaN(num)) cleanFields[key] = num;
                 break;
-              case 5: // date
-                // 尝试解析中文日期格式如 "2024年1月"、"2024/1/1"、"1月1日"
+              }
+              case 5: { // date
                 const d = parseChineseDate(raw);
-                if (d) { cleanFields[key] = d; } else { cleanFields[key] = raw; }
+                if (d) cleanFields[key] = d;
                 break;
-              case 18: // rating
+              }
+              case 18: { // rating
                 const rating = parseInt(raw);
-                cleanFields[key] = (rating >= 0 && rating <= 5) ? rating : raw;
+                if (rating >= 0 && rating <= 5) cleanFields[key] = rating;
                 break;
-              case 1001: // progress
+              }
+              case 1001: { // progress
                 const pct = parseFloat(raw);
-                cleanFields[key] = (pct >= 0 && pct <= 100) ? pct : raw;
+                if (pct >= 0 && pct <= 100) cleanFields[key] = pct;
                 break;
-              case 7: // checkbox
+              }
+              case 7: { // checkbox
                 const t = raw.toLowerCase();
                 if (t === 'true' || t === '是' || t === 'yes' || t === '1' || t === '✓' || t === '√') cleanFields[key] = true;
                 else if (t === 'false' || t === '否' || t === 'no' || t === '0' || t === '✗' || t === '×') cleanFields[key] = false;
-                else cleanFields[key] = raw;
                 break;
+              }
               default:
                 cleanFields[key] = raw;
             }
@@ -879,7 +882,20 @@ export async function feishuConvertExcelToBitable(input) {
     } catch (e) {
       results.push(`表"${tableName}": 失败 - ${e.message}`);
     }
+    // 避免飞书API限频
+    await new Promise(r => setTimeout(r, 150));
   }
+
+  // 删默认空表（飞书建Base时自动生成的"数据表"）
+  try {
+    const existing = await feishuApi('GET', `/bitable/v1/apps/${appToken}/tables`);
+    const items = existing?.data?.items || existing?.items || [];
+    for (const t of items) {
+      if (t.name === '数据表' || t.name === 'Sheet1' || t.name === 'Table1') {
+        await feishuApi('DELETE', `/bitable/v1/apps/${appToken}/tables/${t.table_id}`).catch(() => {});
+      }
+    }
+  } catch {}
 
   let tenantDomain;
   try { tenantDomain = await getFeishuTenantDomain(); } catch { tenantDomain = 'bytedance'; }
@@ -1023,8 +1039,16 @@ export async function feishuCliExecute(input) {
 }
 
 export async function feishuCreateBitable(input) {
-  const { name, description, fields, records } = input || {};
-  if (!name && !description) return '请提供表格名称(name)或描述(description)。';
+  const { name, description, fields, records, file_path } = input || {};
+
+  // ═══════════════════════════════════════════════════
+  // 路径A：传了 file_path → Excel→多维表格，多Sheet一步到位
+  // ═══════════════════════════════════════════════════
+  if (file_path) {
+    return feishuConvertExcelToBitable({ file_path, base_name: name, folder_token: input.folder_token });
+  }
+
+  if (!name && !description) return '请提供表格名称(name)或描述(description)，或传入file_path解析Excel文件。';
 
   try {
     const tableName = name || (description || '').split(/[,，、\n]/)[0].slice(0, 50).replace(/[建創]一个?|表[格單]|帮我|请[求你]?/g, '').trim() || '数据表';
@@ -1304,7 +1328,7 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_import_to_cloud_doc',
-    description: '将已下载到本地的文件导入为飞书云文档（如将.xls/.xlsx导入为飞书电子表格，将.docx导入为飞书文档）。⚠️ 老xls文件的GBK/GB2312编码问题用此工具解决——飞书服务器自动处理编码转换，比你写Python解析强100倍。参数是file_path（本地路径），不是file_key。需要先通过feishu_download_resource下载文件拿到filePath。',
+    description: '将已下载到本地的文件导入为飞书云文档（.xlsx→电子表格，.docx→文档）。⚠️ 这只是导入为飞书在线文件，不是多维表格。如果用户要"转为多维表格"，请用 feishu_create_bitable 传 file_path。参数是file_path（本地路径），需要先通过feishu_download_resource下载。',
     input_schema: {
       type: 'object',
       properties: {
@@ -1374,7 +1398,7 @@ export const FEISHU_TOOLS = [
   },
   {
     name: 'feishu_create_bitable',
-    description: `创建飞书多维表格并导入数据，一步到位返回链接。支持自然语言描述或结构化字段。
+    description: `创建飞书多维表格并导入数据，一步到位返回链接。支持自然语言描述、结构化字段。
 字段类型: text number select datetime checkbox user attachment link formula lookup auto_number`,
     input_schema: {
       type: 'object',
@@ -1385,6 +1409,18 @@ export const FEISHU_TOOLS = [
         records: { type: 'array', items: { type: 'object' }, description: '记录数组 [{fields:{...}}]，已有数据时传' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'feishu_excel_to_bitable',
+    description: `【Excel转多维表格专用工具】将Excel文件(.xlsx/.xls)一键转为飞书多维表格。自动下载→解析→建库→多Sheet建多表→批量写数据→返回链接，全程一个工具调用完成。不要用feishu_cli+feishu_write_records逐个建表写数据，那是错的。`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        file_path: { type: 'string', description: 'Excel文件的本地路径。从feishu_download_resource返回的filePath获取。' },
+        base_name: { type: 'string', description: '多维表格名称（可选，默认用文件名）' },
+      },
+      required: ['file_path'],
     },
   },
 ];
@@ -1406,5 +1442,6 @@ export const FEISHU_EXECUTORS = {
   feishu_import_to_cloud_doc: feishuImportToCloudDoc,
   feishu_cli: feishuCliExecute,
   feishu_create_bitable: feishuCreateBitable,
+  feishu_excel_to_bitable: feishuConvertExcelToBitable,
   feishu_write_records: feishuWriteRecords,
 };

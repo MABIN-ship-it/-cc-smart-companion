@@ -30,7 +30,7 @@ const initialState = {
   memoryPanelOpen: false,
   personalityPanelOpen: false,
   currentProject: localStorage.getItem('cc_workspace') || null,
-  apiKey: localStorage.getItem('cc_api_key') || '',
+  apiKey: (() => { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('cc_api_key_')) { const v = localStorage.getItem(k); if (v) return v; } } return ''; })(),
   sessionStart: Date.now(),
   inputMode: 'execute',
   sessions: _preloadSessions,

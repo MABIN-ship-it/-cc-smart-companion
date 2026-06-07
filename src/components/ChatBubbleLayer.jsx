@@ -5,6 +5,12 @@ function renderMarkdown(text) {
   if (!text) return '';
   let html = text;
 
+  // 剥离模型泄露的 XML 标签（先清 XML 再转义，避免 &lt;tool_calls&gt; 残留）
+  html = html.replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '');
+  html = html.replace(/<invoke[\s\S]*?<\/invoke>/gi, '');
+  html = html.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '');
+  html = html.replace(/<\/?(?:function_call|parameter|parameters|tool_calls|invoke)[^>]*>/gi, '');
+
   html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');

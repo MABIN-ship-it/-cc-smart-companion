@@ -1,6 +1,6 @@
 {
   "name": "cc-smart-companion",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "桌面AI智能伙伴 | 16家LLM自由切换 | 飞书深度集成 | 3D虚拟角色 | Desktop AI Companion",
   "main": "electron/main.js",
   "scripts": {

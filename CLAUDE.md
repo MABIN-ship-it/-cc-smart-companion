@@ -212,11 +212,49 @@ feishuTools.js → feishu.js → feishuApi() → 飞书开放平台 API
 | 9 | CC 数据没写进去就停了 | 没有"不达目标不许停"约束 | promptBuilder.js L388 | execute prompt 加"不达目标不许停"规则 |
 | 10 | `feishu_cli` 命令前缀缺失 | AI 写 `table +xxx` 而非 `base +xxx` | main.js L1206 | 自动纠正：`/^(table|record|field)\s/ → 'base ' + cmd` |
 
+### 2026-06-04（Excel→多维表格全线修复）
+
+> **关键教训**：之前所有"加prompt指令"的修复方向是错的——提示词再强硬也架不住AI工具能力有缺口。真正的方法是：①让工具能力覆盖全链路 ②修复数据层的硬bug。
+
+| # | 问题 | 根因 | 修复文件 | 修复方式 |
+|---|------|------|---------|---------|
+| 11 | `feishu_excel_to_bitable` 表头取错行（合并标题变字段名） | excelParser 固定取 Row 0 为表头，但 ExcelJS 合并单元格每个格都返回同值 → `count0<=2` 不触发 | excelParser.js L56-77 | `findHeaderRowIndex` 3 策略：xlsx库合并(`count0<=2`)、ExcelJS合并(`unique0.size===1`)、richText全同 |
+| 12 | `feishu_excel_to_bitable` 数据全是 0 条 | ExcelJS 返回公式对象 `{formula, result}` 和富文本 `{richText: [...]}`，`String()` 全变 `[object Object]` | excelParser.js L7-29 | `normalizeCellValue`：公式取 `result`、富文本拼 `text`、共享公式取 `result` |
+| 13 | `feishu_excel_to_bitable` 建表"创建失败"（实际表已建好） | `tableResult?.table?.table_id` 没 fallback 到 `tableResult?.table_id`；飞书API有两种返回格式 | feishuTools.js L813 | 加 `\|\| tableResult?.table_id` fallback |
+| 14 | 字段名含 `/` 被飞书API拒绝 | 商品品质的"内容/标准"、便民服务的"属性/点位" | excelParser.js L142-147 | `cleanHeader` 加字符清洗：`/`→`-`，去 `<>:"|?*` |
+| 15 | 汇总表前导空列（列1） | Excel 合并区域是 B:I 不是 A:I，A列全空 | excelParser.js L103-108 | 去前导空列：header 为 `列N` 且所有data行为空则 shift |
+| 16 | `/` 字符写入数字字段导致 `TextFieldConvFail` | 便民/员工关爱行用 `/` 表示N/A，值清洗把它当字符串往数字字段写 | feishuTools.js L842-869 | 数字/货币/评分/进度字段遇到 NaN 直接跳过（不写），日期字段解析失败也跳过 |
+| 17 | CC 输出裸 `<tool_calls>` XML | `renderMarkdown` 只做 HTML 转义不剥离 XML 标签 | ChatBubbleLayer.jsx L4-10 | 渲染前正则剥离 `<tool_calls>`、`<invoke>`、`<system-reminder>` 等标签 |
+| 18 | API Key 图标不亮 | `AppContext` 读 `cc_api_key`，但 modelAdapter 写到 `cc_api_key_${modelId}` | AppContext.jsx L33 | 初始化扫描全部 `cc_api_key_*` 键 |
+| 19 | 飞书通知静默失败 | `sendCreationNotification` 全部 `.catch(()=>{})` 无日志 | feishu.js L812-819 | 加 `console.warn/log`，标记 target 为空/发送失败 |
+| 20 | 部署后旧 `dist/` 文件堆积（曾有57个旧JS） | `deploy.bat` 用 xcopy 不清理 | deploy.bat L30-33 | 拷贝前 `del /Q /S` 清旧：两个 `dist/` 都要清 |
+| 21 | CC 不用 `feishu_excel_to_bitable` 而用 cli+write_records 一步步来 | 工具名叫 `feishu_create_bitable`，AI 看到名字联想不出 Excel 转换 | feishuTools.js L1383 | 新增独立工具 `feishu_excel_to_bitable`，名字=用途，一个调用完成全部 |
+| 22 | Excel→多维表格后留空表"数据表" | 飞书建Base自动生成默认表，`feishuConvertExcelToBitable` 没删 | feishuTools.js L888-896 | 建完全部表后扫一遍，删"数据表"/"Sheet1"/"Table1" |
+| 23 | 7表连续创建触发限频 | 无表间延迟 | feishuTools.js L886 | 每个表后 `await setTimeout(150ms)` |
+
+### 修复后测试验证方法
+
+不再靠 CC 自己测——**直接用飞书API跑通整条链路**：
+
+```bash
+# CC 项目目录下
+node --input-type=module -e "
+import ExcelJSModule from 'exceljs';
+// 1. getTenantAccessToken（从 cc_feishu_config.json 取 appId/appSecret）
+// 2. createBase → 拿到 appToken
+// 3. excelParser 解析 → 拿到 fields + records
+// 4. 逐个 addTable → batchAddBaseRecords
+// 5. 验证：打开链接检查所有表数据
+"
+```
+
+如果 Node.js 能跑通但 CC 不行 → 对比两边的 API 调用参数和返回值解析路径。
+
 ### 2026-05-29
-11. **计划模式转执行后反复要求审批** — 添加了计划模式与执行模式铁律
-12. **思考过程输出全英文** — promptBuilder 添加了中文思考指令
-13. **文件生成工具返回成功但文件不存在** — 添加了文件存在性验证
-14. **用户画像垃圾数据** — userProfile.js 添加了校验
+24. **计划模式转执行后反复要求审批** — 添加了计划模式与执行模式铁律
+25. **思考过程输出全英文** — promptBuilder 添加了中文思考指令
+26. **文件生成工具返回成功但文件不存在** — 添加了文件存在性验证
+27. **用户画像垃圾数据** — userProfile.js 添加了校验
 
 ---
 

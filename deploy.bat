@@ -27,8 +27,10 @@ if %errorlevel% neq 0 (
 echo.
 echo [3/4] 部署到运行目录...
 
-:: 前端 dist
+:: 前端 dist（先清旧再拷贝，防止旧hash堆积）
+if exist "%TARGET%\resources\app\dist\*" del /Q /S "%TARGET%\resources\app\dist\*"
 xcopy /E /Y /Q "dist\*" "%TARGET%\resources\app\dist\"
+if exist "%TARGET%\dist\*" del /Q /S "%TARGET%\dist\*"
 xcopy /E /Y /Q "dist\*" "%TARGET%\dist\"
 
 :: 后端 electron 文件

@@ -811,11 +811,13 @@ export async function replyToMessage(eventData, customReply) {
  */
 export async function sendCreationNotification(type, title, url) {
   try {
-    if (!url) return;
+    if (!url) { console.warn('[feishu通知] 无url，跳过'); return; }
     const target = await resolveReceiveTarget();
-    if (!target) return;
+    if (!target) { console.warn('[feishu通知] 无target，跳过（default context=' + !!getDefaultReceiveContext() + '）'); return; }
+    console.log('[feishu通知] 发送中...', { type, title, target: target.receiveIdType });
     await sendMessage(target.receiveIdType, target.receiveId, `CC 已为你创建了${type}：${title}\n${url}`);
-  } catch { /* 通知失败不影响主流程 */ }
+    console.log('[feishu通知] 发送成功');
+  } catch (e) { console.warn('[feishu通知] 发送失败:', e.message); }
 }
 
 // ─── 默认接收上下文（统一飞书会话） ────────────────────
