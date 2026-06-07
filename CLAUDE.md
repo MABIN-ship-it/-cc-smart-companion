@@ -298,3 +298,72 @@ import ExcelJSModule from 'exceljs';
 7. **飞书消息** — 检查聊天记录中是否有"来自飞书"的历史消息
 8. **飞书收发** — 从飞书 APP 给 CC 发消息 → 检查 CC 是否收到 → CC 回复到飞书 → 检查飞书是否收到
 9. **Excel→多维表格** — 从飞书给 CC 发 Excel → 说"转为多维表格" → 打开链接截图验证
+
+---
+
+## 十四、开源发布与打包
+
+> 最后更新：2026-06-07
+
+### 仓库配置
+
+| 平台 | 仓库 | 类型 |
+|------|------|------|
+| Gitee | `mabin-cici/cc-smart-companion-public` | **公开**（开源主仓） |
+| Gitee | `mabin-cici/cc-smart-companion` | 私有（开发用，勿动） |
+| GitHub | `MABIN-ship-it/-cc-smart-companion` | 公开（海外镜像） |
+
+> ⚠️ **重要**：`mabin-cici/cc-smart-companion` 是私有仓库，存放开发代码。公开仓库是 `cc-smart-companion-public`。
+
+### 本地 git remote 配置
+
+```
+origin  → git@gitee.com:mabin-cici/cc-smart-companion-public.git (公开仓)
+github  → https://github.com/MABIN-ship-it/-cc-smart-companion.git (海外镜像)
+```
+
+### 构建 NSIS 一键安装包
+
+```bash
+# 编码问题修复：Windows 中文系统需先设置 UTF-8
+chcp 65001
+
+# 构建（vite build + electron-builder NSIS）
+npm run dist
+
+# 输出位置
+D:\cc安装包\汇总\release\CC你的终身好友 Setup x.x.x.exe
+```
+
+> LZMA 固实压缩，安装包约 133MB。安装时支持自定义路径、桌面快捷方式。
+
+### 发布流程
+
+1. 确认运行版代码最新：`D:\cc安装包\1cc最终版\resources\app\electron\` → 源码 `electron\`
+2. 修改 `package.json` 版本号
+3. `chcp 65001 && npm run dist` 构建 NSIS 安装包
+4. 在 GitHub 创建 Release → 上传 exe（133MB，≤2GB 无压力）
+5. 在 Gitee 创建 Release → 分包上传（单文件限制 100MB，拆为 2 个 ~67MB 分卷）
+6. 更新 README 下载链接
+
+### GitHub API 上传（国内网络）
+
+```python
+# GitHub DNS 被污染，需使用真实 IP
+# api.github.com → 140.82.113.5
+# uploads.github.com → 199.59.148.9
+# 连接时跳过 SSL hostname 校验，手动设置 Host header
+```
+
+### Gitee API Token
+
+- 永久 Token：参见 `C:\Users\lenovo\.claude\settings.json` 或历史会话记录
+- GitHub Token：同上
+
+> ⚠️ **严禁将 token 写入代码仓库！** GitHub push protection 会拦截并吊销 token。
+
+### 联系人信息
+
+- 作者：Mabincici (马斌)
+- 邮箱：1357502777@qq.com
+- License：MIT © 2026 Mabincici (马斌)
