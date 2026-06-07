@@ -59,7 +59,7 @@
 
 ### Option 1: Download Installer (Recommended)
 
-Get the latest `CC-Setup.exe` from [Releases](http://1.14.67.28/download/).
+Get the latest `CC-Setup-v1.0.0.zip` from [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases), unzip and run `electron.exe`.
 
 Requires: **Windows 10/11 x64**
 
@@ -151,8 +151,8 @@ cc-smart-companion/
 
 | Version | Type | Download |
 |---------|------|----------|
-| Latest Stable | NSIS Installer | [CC-Setup.exe](http://1.14.67.28/download/) |
-| Portable | No install | [CC-Portable.exe](http://1.14.67.28/download/) |
+| v1.0.0 | Portable (zip) | [CC-Setup-v1.0.0.zip](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
+| Latest | All formats | [Releases Page](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
 
 > Built with electron-builder. Auto-update configured.
 

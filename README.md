@@ -60,7 +60,7 @@
 
 ### 方式一：下载安装包（推荐）
 
-从 [Releases](http://1.14.67.28/download/) 下载最新 `CC-Setup.exe`，双击安装即可。
+从 [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) 下载最新 `CC-Setup-v1.0.0.zip`，解压后双击 `electron.exe` 即可。
 
 系统要求：**Windows 10/11 x64**
 
@@ -187,8 +187,8 @@ feishuTools.js → feishu.js → 飞书开放平台 API
 
 | 版本 | 类型 | 下载 |
 |------|------|------|
-| 最新稳定版 | NSIS 安装包 | [CC-Setup.exe](http://1.14.67.28/download/) |
-| 便携版 | 免安装 | [CC-Portable.exe](http://1.14.67.28/download/) |
+| v1.0.0 | 便携版 (zip) | [CC-Setup-v1.0.0.zip](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
+| 最新版 | 所有格式 | [Releases 页面](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
 
 > 安装包通过 electron-builder 构建，自动更新已配置。
 
