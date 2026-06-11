@@ -5,6 +5,8 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey)]()
 [![Electron](https://img.shields.io/badge/electron-42-blue)]()
 
+⬇️ **国内快速下载地址：**[miniaimarket.cn](https://miniaimarket.cn)
+
 > An open-source AI companion that lives on your Windows desktop — with a 3D character,
 > long-term memory, knowledge graph, and deep Feishu/WeChat integration.
 >
@@ -136,4 +138,4 @@ MIT © 2026 Mabincici (马斌)
 
 ---
 
-📧 Contact | 联系：Mabincici <1357502777@qq.com>　|　🎵 抖音交流群：253968290900
+📧 Contact | 联系：Mabincici <1357502777@qq.com>　|　🎵 抖音交流群：253968290900　|　🌐 [miniaimarket.cn](https://miniaimarket.cn)
