@@ -28,15 +28,15 @@
 |---------|-------------|
 | 🎭 **3D Character** | Mixamo model, expression engine, custom GLB upload |
 | 🧠 **Long-term Memory** | 500+ node knowledge graph, TF-IDF semantic search, hot/warm/cold tiered storage |
-| 👤 **User Profile** | Auto-extracts preferences, rules, work habits from conversations |
+| 👤 **User Profile** | Automatically extracts preferences, rules, and work habits from conversations |
 | 🤖 **22 LLM Providers** | OpenAI-compatible API — DeepSeek, Qwen, GLM, Kimi, and more |
-| 📨 **Feishu** | WebSocket real-time messaging, file/image, Bitable, Excel→Bitable one-click |
+| 📨 **Feishu** | WebSocket real-time messaging, file/image transfer, Bitable creation, one-click Excel→Bitable conversion |
 | 💬 **WeChat Plugin** | wxhelper integration for message reading |
 | 🔌 **Plugin System** | Drag-and-drop `.cc-plugin.js`, extensible to any platform |
 | 🛠 **Tool Use** | File ops, web search, PPT generation, Python execution |
 | 🤖 **Auto Tasks** | Auto-scans Feishu for pending tasks, generates reports |
-| ⏰ **Scheduled** | Auto-execution at 9/11/15/17/19/24 daily |
-| 🎤 **TTS / STT** | Edge TTS + local faster-whisper voice recognition |
+| ⏰ **Scheduled** | Auto-executes daily at 9/11/15/17/19/24 |
+| 🎤 **TTS / STT** | Edge TTS + local faster-whisper speech recognition |
 
 ## 📸 Screenshots
 
