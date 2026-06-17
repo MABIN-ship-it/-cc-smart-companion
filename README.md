@@ -33,15 +33,15 @@
 |---------|------|
 | 🎭 **3D Character** — Mixamo model, expression engine, custom GLB upload | 🎭 **3D 角色** — Mixamo 模型、表情引擎、支持上传自定义角色 |
 | 🧠 **Long-term Memory** — 500+ node knowledge graph, TF-IDF semantic search, hot/warm/cold tiered storage | 🧠 **长期记忆** — 500+ 节点知识图谱、TF-IDF 语义检索、热/温/冷三级存储 |
-| 👤 **User Profile** — Auto-extracts preferences, rules, work habits from conversations | 👤 **用户画像** — 对话中自动提取偏好、规则、工作习惯 |
+| 👤 **User Profile** — Automatically extracts preferences, rules, and work habits from conversations | 👤 **用户画像** — 从对话中自动提取偏好、规则和工作习惯 |
 | 🤖 **22 LLM Providers** — OpenAI-compatible API, switch between DeepSeek / Qwen / GLM / Kimi & more | 🤖 **22 种大模型** — 兼容 OpenAI API 格式，自由切换 DeepSeek / Qwen / GLM / Kimi 等 |
-| 📨 **Feishu** — WebSocket real-time messaging, file/image transfer, Bitable creation, Excel→Bitable one-click | 📨 **飞书** — WebSocket 实时消息、文件/图片收发、多维表格创建、Excel一键转多维表格 |
+| 📨 **Feishu** — WebSocket real-time messaging, file/image transfer, Bitable creation, one-click Excel→Bitable conversion | 📨 **飞书** — WebSocket 实时消息、文件/图片收发、多维表格创建、Excel 一键转多维表格 |
 | 💬 **WeChat Plugin** — wxhelper integration for message reading | 💬 **微信插件** — wxhelper 接入，读取微信消息 |
 | 🔌 **Plugin System** — Drag-and-drop `.cc-plugin.js`, extensible to any platform | 🔌 **插件系统** — 拖拽 `.cc-plugin.js` 一键安装，可扩展任意平台 |
 | 🛠 **Tool Use** — File ops, web search, PPT generation, Python execution | 🛠 **工具调用** — 文件操作、网页搜索、PPT 生成、Python 执行 |
-| 🤖 **Auto Tasks** — Scans Feishu for pending tasks, generates reports, processes approvals | 🤖 **主动接任务** — 自动扫描飞书待办、生成日报周报、处理审批 |
-| ⏰ **Scheduled** — Auto-execution at 9/11/15/17/19/24 daily | ⏰ **定时执行** — 每日 9/11/15/17/19/24 点自动扫描 |
-| 🎤 **TTS / STT** — Edge TTS + local faster-whisper voice recognition | 🎤 **语音交互** — Edge TTS 语音合成 + 本地语音识别 |
+| 🤖 **Auto Tasks** — Scans Feishu for pending tasks, generates reports, processes approvals | 🤖 **主动接任务** — 自动扫描飞书待办、生成日报/周报、处理审批 |
+| ⏰ **Scheduled** — Auto-executes daily at 9/11/15/17/19/24 | ⏰ **定时执行** — 每日 9/11/15/17/19/24 点自动扫描 |
+| 🎤 **TTS / STT** — Edge TTS + local faster-whisper speech recognition | 🎤 **语音交互** — Edge TTS 语音合成 + 本地语音识别 |
 
 ## 📸 Screenshots | 截图
 
