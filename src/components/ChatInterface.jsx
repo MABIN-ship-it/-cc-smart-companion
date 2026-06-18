@@ -289,6 +289,22 @@ export default function ChatInterface() {
     return remove;
   }, []);
 
+  // ─── Python 缺失引导 ──────────────────────────────────
+  useEffect(() => {
+    if (!window.electronAPI?.onTtsPythonMissing) return;
+    const remove = window.electronAPI.onTtsPythonMissing(() => {
+      const goDownload = confirm(
+        '语音朗读功能需要 Python 3.10+，是否前往下载？\n\n'
+        + '安装时请务必勾选 "Add Python to PATH"。\n'
+        + '安装完成后重启CC即可启用语音。'
+      );
+      if (goDownload) {
+        window.electronAPI?.openExternal?.('https://dl.miniaimarket.cn/download/python-3.12.4-amd64.exe');
+      }
+    });
+    return remove;
+  }, []);
+
   // ─── 启动时自动连接飞书 ──────────────────────────────
   useEffect(() => {
     if (state.feishuStatus === 'connected' || state.feishuStatus === 'connecting') return;

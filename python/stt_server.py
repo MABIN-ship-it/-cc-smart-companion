@@ -45,7 +45,7 @@ except ImportError:
 if MISSING:
     import subprocess
     print(f"[STT] Installing missing packages: {MISSING}", flush=True)
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q'] + MISSING,
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple'] + MISSING,
                           stdout=sys.stdout, stderr=sys.stderr)
     # Reload after install
     from flask import Flask, request, jsonify
@@ -110,7 +110,7 @@ def decode_audio(file_bytes):
         return data, samplerate
     except ImportError:
         import subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', 'pydub'],
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple', 'pydub'],
                               stdout=sys.stdout, stderr=sys.stderr)
         from pydub import AudioSegment
         seg = AudioSegment.from_file(io.BytesIO(file_bytes))

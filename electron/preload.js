@@ -37,6 +37,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Edge TTS (simple spawn → base64)
   edgeTtsSpeak: (text) => ipcRenderer.invoke('tts:speak', text),
   edgeTtsCancel: () => ipcRenderer.invoke('tts:cancel'),
+  onTtsPythonMissing: (callback) => {
+    const handler = (_event, ...args) => callback(...args);
+    ipcRenderer.on('tts:python-missing', handler);
+    return () => ipcRenderer.removeListener('tts:python-missing', handler);
+  },
 
   // Voice cloning
   ttsCloneSpeak: (params) => ipcRenderer.invoke('tts:cloneSpeak', params),

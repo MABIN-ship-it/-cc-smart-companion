@@ -33,7 +33,7 @@ autoUpdater.logger = {
   warn: (msg) => console.warn(`[Updater] ${msg}`),
   error: (msg) => console.error(`[Updater] ${msg}`),
 };
-autoUpdater.autoDownload = false; // 后台静默检查，用户手动下载
+autoUpdater.autoDownload = true; // 后台自动下载，下载完弹窗提示重启
 
 function sendUpdateStatus(status, data = {}) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -67,6 +67,18 @@ autoUpdater.on('download-progress', (progress) => {
 });
 
 autoUpdater.on('update-downloaded', () => {
+  // 下载完成 → 弹窗询问是否立即重启安装
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: 'CC 更新完成',
+    message: '新版本已下载完成，是否立即重启安装？',
+    buttons: ['立即重启', '稍后'],
+    defaultId: 0,
+  }).then(({ response }) => {
+    if (response === 0) {
+      autoUpdater.quitAndInstall(false, true);
+    }
+  });
   sendUpdateStatus('downloaded');
 });
 
@@ -267,7 +279,7 @@ try:
     import edge_tts
 except ImportError:
     import subprocess
-    subprocess.run([sys.executable, '-m', 'pip', 'install', 'edge-tts', '-q'], capture_output=True)
+    subprocess.run([sys.executable, '-m', 'pip', 'install', 'edge-tts', '-q', '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple'], capture_output=True)
     import edge_tts
 
 async def main():
@@ -285,10 +297,77 @@ asyncio.run(main())
   const pyPath = mp3Path.replace('.mp3', '.py');
   fs.writeFileSync(pyPath, pythonCode, 'utf-8');
 
-  const child = spawn('python', ['-u', pyPath], {
-    cwd: tmpDir,
-    timeout: 30000,
-  });
+  // 检查 Python 是否可用
+  let child;
+  try {
+    child = spawn('python', ['-u', pyPath], {
+      cwd: tmpDir,
+      timeout: 30000,
+    });
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      try { fs.unlinkSync(pyPath); } catch {}
+      // 自动下载安装 Python
+      const pyInstaller = path.join(app.getPath('temp'), 'python-3.12.4-amd64.exe');
+      const pyDefaultPath = path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe');
+      const alreadyInstalled = fs.existsSync(pyDefaultPath);
+
+      const doSpawn = (pythonExe) => {
+        return new Promise((resolve, reject) => {
+          try {
+            const c = spawn(pythonExe, ['-u', pyPath], { cwd: tmpDir, timeout: 30000 });
+            resolve(c);
+          } catch (e2) { reject(e2); }
+        });
+      };
+
+      if (alreadyInstalled) {
+        try { child = await doSpawn(pyDefaultPath); }
+        catch (e3) { return { success: false, error: 'Python 启动失败: ' + (e3.message || '') }; }
+      } else {
+        // 异步下载 + 安装
+        return (async () => {
+          try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('tts:python-installing');
+            }
+            // 下载
+            const http = require('https');
+            await new Promise((resolve, reject) => {
+              const file = fs.createWriteStream(pyInstaller);
+              http.get('https://dl.miniaimarket.cn/download/python-3.12.4-amd64.exe', (res) => {
+                if (res.statusCode >= 300 && res.statusCode < 400) {
+                  // follow redirect
+                  http.get(res.headers.location, (res2) => {
+                    res2.pipe(file);
+                    file.on('finish', () => { file.close(); resolve(); });
+                  }).on('error', reject);
+                } else {
+                  res.pipe(file);
+                  file.on('finish', () => { file.close(); resolve(); });
+                }
+              }).on('error', reject);
+            });
+            // 静默安装
+            await new Promise((resolve) => {
+              const inst = spawn(pyInstaller, ['/quiet', 'InstallAllUsers=0', 'PrependPath=1', 'Include_test=0'], { stdio: 'ignore' });
+              inst.on('close', resolve);
+            });
+            // 用新装的 Python 重试
+            if (fs.existsSync(pyDefaultPath)) {
+              return { success: false, error: 'Python 已安装，请重新发送消息启用语音。' };
+            }
+            return { success: false, error: 'Python 自动安装失败，请手动安装。' };
+          } catch (autoErr) {
+            return { success: false, error: 'Python 安装异常: ' + (autoErr.message || '') };
+          }
+        })();
+      }
+    } else {
+      try { fs.unlinkSync(pyPath); } catch {}
+      return { success: false, error: 'TTS启动失败: ' + (e.message || '') };
+    }
+  }
 
   const pid = child.pid;
   let resolved = false;
