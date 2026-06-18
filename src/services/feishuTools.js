@@ -266,10 +266,24 @@ const FIELD_TYPE_EXAMPLES = {
 };
 
 function normalizeFields(rawFields) {
-  return (rawFields || []).map(f => ({
-    field_name: f.field_name || f.name || '',
-    type: typeof f.type === 'number' ? f.type : (FIELD_TYPE_MAP[f.type] || 1),
-  }));
+  return (rawFields || []).map(f => {
+    const base = {
+      field_name: f.field_name || f.name || '',
+      type: typeof f.type === 'number' ? f.type : (FIELD_TYPE_MAP[f.type] || 1),
+    };
+    // 保留 property（select options、number formatter 等）
+    if (f.property && Object.keys(f.property).length > 0) {
+      base.property = f.property;
+    }
+    // 保留 options 简写（AI常用）
+    if (f.options && Array.isArray(f.options)) {
+      base.property = { options: f.options.map((o, i) =>
+        typeof o === 'string' ? { name: o, color: i } : o
+      )};
+    }
+    if (f.description) base.description = f.description;
+    return base;
+  });
 }
 
 /**
@@ -1096,14 +1110,17 @@ export async function feishuCreateBitable(input) {
     if (typeof fields === 'string') { try { fields = JSON.parse(fields); } catch {} }
 
     let wroteCount = 0;
+    let writeError = '';
     if (recs && Array.isArray(recs) && recs.length > 0) {
       try {
         const normalized = recs.map(r => ({ fields: r.fields || r }));
         const batchResult = await batchAddBaseRecords(bt, tid, normalized);
         wroteCount = batchResult?.inserted || 0;
-        if (batchResult?.errors) console.warn('[feishu_create_bitable] 写入异常:', batchResult.errors);
+        if (batchResult?.errors?.length) {
+          writeError = batchResult.errors.join('; ');
+        }
       } catch (e) {
-        console.error('[feishu_create_bitable] 批量写入失败:', e.message);
+        writeError = e.message;
       }
     }
 
@@ -1111,8 +1128,16 @@ export async function feishuCreateBitable(input) {
     feishuCliCommand({ command: ['base', '+view-create', '--base-token', bt, '--table-id', tid, '--name', '表格视图', '--type', 'grid'] }).catch(()=>{});
 
     const url = `https://hcn22as87t3m.feishu.cn/base/${bt}`;
-    const recInfo = wroteCount > 0 ? `，${wroteCount}条记录已导入` : '';
-    return `多维表格已创建！\n📊 ${tableName}\n🔗 ${url}${recInfo}`;
+    let result = `多维表格已创建！\n📊 ${tableName}\n🔗 ${url}`;
+    if (wroteCount > 0) {
+      result += `\n✅ ${wroteCount}条记录已导入`;
+    } else if (recs && Array.isArray(recs) && recs.length > 0) {
+      result += `\n⚠️ 数据写入失败：${recs.length}条请求，0条成功。请用feishu_write_records重试。`;
+      if (writeError) result += `\n错误信息: ${writeError.slice(0, 300)}`;
+    }
+    // 始终附带 table 定位信息
+    result += `\n[app_token=${bt}] [table_id=${tid}]`;
+    return result;
   } catch (e) {
     return `创建失败: ${e.message}`;
   }
@@ -1121,8 +1146,9 @@ export async function feishuCreateBitable(input) {
 // ─── 工具：批量写记录到已有表 ────────────────
 
 export async function feishuWriteRecords(input) {
-  const { app_token, table_id, records } = input || {};
-  if (!app_token || !table_id) return '请提供 app_token 和 table_id';
+  const { app_token, base_id, table_id, records } = input || {};
+  const effectiveAppToken = app_token || base_id;
+  if (!effectiveAppToken || !table_id) return '请提供 app_token(或base_id) 和 table_id';
   if (!records) return '请提供 records 数组';
 
   try {
@@ -1131,7 +1157,7 @@ export async function feishuWriteRecords(input) {
     if (!Array.isArray(recs) || recs.length === 0) return 'records 格式错误，需要数组';
 
     const normalized = recs.map(r => ({ fields: r.fields || r }));
-    const result = await batchAddBaseRecords(app_token, table_id, normalized);
+    const result = await batchAddBaseRecords(effectiveAppToken, table_id, normalized);
     if (result.inserted === 0) {
       const err = result.errors?.join('; ') || '未知错误';
       return `写入失败：${result.requested}条请求，0条成功。错误: ${err}`;

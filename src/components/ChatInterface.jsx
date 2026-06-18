@@ -1304,7 +1304,7 @@ export default function ChatInterface() {
       {showOnlineToast && <div className="online-toast">✅ 网络已恢复</div>}
 
       {/* ====== Layer 5: Update banner ====== */}
-      {updateStatus && updateStatus !== 'not-available' && (
+      {updateStatus && updateStatus !== 'not-available' && updateStatus !== 'checking' && (
         <div className={`update-banner ${updateStatus}`}>
           {updateStatus === 'downloaded' ? (
             <>
