@@ -1562,6 +1562,47 @@ export default function ChatInterface() {
                     </div>
                   ))}
 
+                  {/* Ollama 一键扫描按钮 */}
+                  {supplier.id === 'ollama' && window.electronAPI?.ollamaList && (
+                    <div style={{marginTop: 8, marginBottom: 4}}>
+                      <button className="api-modal-btn confirm active"
+                        onClick={async () => {
+                          const btn = document.getElementById('ollama-scan-btn');
+                          if (btn) { btn.textContent = '⏳ 扫描中...'; btn.disabled = true; }
+                          try {
+                            const result = await window.electronAPI.ollamaList();
+                            if (result.success && result.models.length > 0) {
+                              const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
+                              result.models.forEach(m => {
+                                const modelId = 'ollama-' + m.name.replace(/[:.]/g, '-');
+                                cm[modelId] = {
+                                  supplier: 'ollama',
+                                  name: 'Ollama: ' + m.name,
+                                  endpoint: 'http://localhost:11434/v1/chat/completions',
+                                  protocol: 'openai',
+                                  modelName: m.name,
+                                  defaultMaxTokens: 8192,
+                                  contextWindow: 32768,
+                                  description: '🏠 本地模型 ' + m.name + '（已扫描）',
+                                };
+                              });
+                              localStorage.setItem('cc_custom_models', JSON.stringify(cm));
+                              setApiInputRefresh(Date.now());
+                              alert(`已扫描到 ${result.models.length} 个本地模型，请返回供应商列表重新进入查看`);
+                            } else if (result.success) {
+                              alert('未扫描到本地模型。请先在终端执行 ollama pull <模型名> 下载模型');
+                            } else {
+                              alert(result.error || '扫描失败');
+                            }
+                          } catch (e) { alert('扫描失败: ' + (e.message || '')); }
+                          if (btn) { btn.textContent = '🔍 一键扫描本地模型'; btn.disabled = false; }
+                        }}
+                        id="ollama-scan-btn"
+                        style={{width:'100%'}}
+                      >🔍 一键扫描本地模型</button>
+                    </div>
+                  )}
+
                   {/* 模型芯片 */}
                   <div>
                     <label>选择模型</label>

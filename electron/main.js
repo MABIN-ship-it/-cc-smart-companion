@@ -212,6 +212,29 @@ ipcMain.handle('get-app-path', () => {
   return app.getPath('userData');
 });
 
+// 扫描本地 Ollama 模型
+ipcMain.handle('ollama:list', async () => {
+  try {
+    const { execSync } = require('child_process');
+    const output = execSync('ollama list', { timeout: 10000, encoding: 'utf-8' });
+    const lines = output.trim().split('\n');
+    const models = [];
+    // 跳过表头行
+    for (let i = 1; i < lines.length; i++) {
+      const name = lines[i].trim().split(/\s+/)[0];
+      if (name && name.indexOf('/') === -1) { // 跳过无效行
+        models.push({ name, label: name.split(':')[0] + ' (' + name.split(':')[1] + ')' });
+      }
+    }
+    return { success: true, models };
+  } catch (e) {
+    if (e.message && e.message.includes('not found')) {
+      return { success: false, error: '未检测到 Ollama。请先安装 Ollama（ollama.com）' };
+    }
+    return { success: false, error: '扫描失败: ' + (e.message || '') };
+  }
+});
+
 // 全屏控制（开场动画用）
 ipcMain.handle('window:setFullScreen', async (_event, fullscreen) => {
   if (mainWindow && !mainWindow.isDestroyed()) {

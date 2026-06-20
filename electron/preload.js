@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ttsServerStop: () => ipcRenderer.invoke('tts-server:stop'),
   ttsServerStatus: () => ipcRenderer.invoke('tts-server:status'),
 
+  // Ollama 本地模型扫描
+  ollamaList: () => ipcRenderer.invoke('ollama:list'),
+
   // Edge TTS (simple spawn → base64)
   edgeTtsSpeak: (text) => ipcRenderer.invoke('tts:speak', text),
   edgeTtsCancel: () => ipcRenderer.invoke('tts:cancel'),
