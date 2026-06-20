@@ -216,8 +216,16 @@ ipcMain.handle('get-app-path', () => {
 ipcMain.handle('ollama:list', async () => {
   try {
     const { execSync } = require('child_process');
-    const output = execSync('ollama list', { timeout: 10000, encoding: 'utf-8' });
-    const lines = output.trim().split('\n');
+    const output = execSync('ollama list', { timeout: 10000, encoding: 'buffer' });
+    // Windows 中文环境 ollama 输出可能是 UTF-8 或 GBK，先试 UTF-8
+    let decoded = output.toString('utf-8');
+    if (decoded.includes('NAME')) {
+      // UTF-8 OK
+    } else {
+      // 尝试 GBK（Windows 中文控制台默认编码）
+      try { decoded = new TextDecoder('gbk').decode(output); } catch {}
+    }
+    const lines = decoded.trim().split('\n');
     const models = [];
     // 跳过表头行
     for (let i = 1; i < lines.length; i++) {
@@ -228,10 +236,7 @@ ipcMain.handle('ollama:list', async () => {
     }
     return { success: true, models };
   } catch (e) {
-    if (e.message && e.message.includes('not found')) {
-      return { success: false, error: '未检测到 Ollama。请先安装 Ollama（ollama.com）' };
-    }
-    return { success: false, error: '扫描失败: ' + (e.message || '') };
+    return { success: false, error: '本机未安装 Ollama。请先前往 ollama.com 下载安装，安装后重启CC再扫描。' };
   }
 });
 
