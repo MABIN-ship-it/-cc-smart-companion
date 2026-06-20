@@ -87,6 +87,14 @@ const SUPPLIER_REGISTRY = {
     apiKeyLabel: 'SiliconFlow API Key',
     defaultModel: 'siliconflow-deepseek-v3',
   },
+  ollama: {
+    id: 'ollama', name: 'Ollama (本地模型)',
+    note: '本地运行的 Ollama 模型，无需联网，零费用',
+    registerUrl: 'https://ollama.com/download',
+    apiKeyLabel: 'API Key（留空即可）',
+    defaultModel: 'ollama-qwen2.5-7b',
+    isLocal: true,
+  },
   custom: {
     id: 'custom', name: '+ 自定义供应商',
     note: '兼容 OpenAI/Anthropic 协议的任意 API 端点',
@@ -306,6 +314,55 @@ const MODEL_REGISTRY = {
     protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 131072,
     description: '🌍 硅谷部署的DeepSeek V3，通过SiliconFlow平台访问——国内直连延迟低。缺点：第三方平台，服务稳定性依赖上游。适合：想要DeepSeek品质+更低延迟',
   },
+  // ── Ollama 本地模型 ──
+  'ollama-qwen2.5-7b': {
+    supplier: 'ollama',
+    name: 'Qwen 2.5 7B (本地)',
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    modelName: 'qwen2.5:7b',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
+    description: '🏠 通义千问2.5 7B版本，本地运行零费用。中文能力出色，日常聊天/翻译/写作均佳。需先 ollama pull qwen2.5:7b',
+  },
+  'ollama-qwen2.5-14b': {
+    supplier: 'ollama',
+    name: 'Qwen 2.5 14B (本地)',
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    modelName: 'qwen2.5:14b',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
+    description: '🏠 通义千问2.5 14B版本，智能水平显著提升。需要16GB以上显存。需先 ollama pull qwen2.5:14b',
+  },
+  'ollama-deepseek-r1-7b': {
+    supplier: 'ollama',
+    name: 'DeepSeek R1 7B (本地)',
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    modelName: 'deepseek-r1:7b',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
+    description: '🏠 DeepSeek推理模型7B版本，数学/逻辑/代码推理超强。需先 ollama pull deepseek-r1:7b',
+  },
+  'ollama-llama3.1-8b': {
+    supplier: 'ollama',
+    name: 'Llama 3.1 8B (本地)',
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    modelName: 'llama3.1:8b',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
+    description: '🏠 Meta开源旗舰模型8B版本，英文能力顶级，中文一般。需先 ollama pull llama3.1:8b',
+  },
+  'ollama-codestral-22b': {
+    supplier: 'ollama',
+    name: 'Codestral 22B (本地)',
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    modelName: 'codestral:22b',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
+    description: '🏠 编程专用本地模型，代码生成/补全/重构能力突出。需24GB显存。需先 ollama pull codestral:22b',
+  },
+  'ollama-custom': {
+    supplier: 'ollama',
+    name: 'Ollama (自定义模型名)',
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    modelName: '',
+    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
+    description: '🏠 使用你已下载的其他Ollama模型。请在模型名称里填入 ollama list 显示的完整名称（如 llama3.2:3b）',
+  },
 };
 
 // ─── 模型管理 ─────────────────────────────────────────────
@@ -365,6 +422,22 @@ export function saveCustomProvider(provider) {
   if (idx >= 0) existing[idx] = provider;
   else existing.push(provider);
   try { localStorage.setItem('cc_custom_providers', JSON.stringify(existing)); } catch {}
+  // 同时注册自定义模型
+  const modelId = 'custom-' + provider.name.replace(/[^a-zA-Z0-9一-鿿]/g, '-');
+  const modelName = provider.modelName || provider.name;
+  const customModels = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
+  customModels[modelId] = {
+    supplier: 'custom',
+    name: provider.name + ' - ' + modelName,
+    endpoint: provider.endpoint,
+    protocol: provider.protocol,
+    modelName: modelName,
+    defaultMaxTokens: 8192,
+    contextWindow: 32768,
+    description: '自定义供应商：' + provider.endpoint,
+  };
+  try { localStorage.setItem('cc_custom_models', JSON.stringify(customModels)); } catch {}
+  return modelId;
 }
 
 /** 删除自定义供应商 */
@@ -401,14 +474,34 @@ export function getAvailableModels() {
     description: cfg.description || '',
     supplier: cfg.supplier,
   }));
-  return builtin;
+  // 追加自定义模型
+  let custom = [];
+  try {
+    const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
+    custom = Object.entries(cm).map(([id, cfg]) => ({
+      id,
+      name: cfg.name,
+      protocol: cfg.protocol,
+      contextWindow: cfg.contextWindow,
+      apiKeyLabel: '',
+      vision: false,
+      description: cfg.description || '',
+      supplier: 'custom',
+    }));
+  } catch {}
+  return [...builtin, ...custom];
 }
 
 /** 获取模型配置 */
 export function getModelConfig(modelId) {
   const cfg = MODEL_REGISTRY[modelId];
-  if (!cfg) throw new Error(`未注册的模型: ${modelId}`);
-  return cfg;
+  if (cfg) return cfg;
+  // 查找自定义模型
+  try {
+    const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
+    if (cm[modelId]) return cm[modelId];
+  } catch {}
+  throw new Error(`未注册的模型: ${modelId}`);
 }
 
 /** 获取用户当前选择的模型ID */
@@ -427,7 +520,14 @@ export function isVisionModel(modelId) {
 
 /** 设置用户当前选择的模型ID */
 export function setCurrentModel(modelId) {
-  if (!MODEL_REGISTRY[modelId]) throw new Error(`未知模型: ${modelId}`);
+  // 允许内置模型和自定义模型
+  const isBuiltin = !!MODEL_REGISTRY[modelId];
+  let isCustom = false;
+  try {
+    const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
+    isCustom = !!cm[modelId];
+  } catch {}
+  if (!isBuiltin && !isCustom) throw new Error(`未知模型: ${modelId}`);
   try {
     localStorage.setItem('cc_current_model', modelId);
   } catch {}
@@ -649,7 +749,8 @@ function parseOpenAIResponse(data) {
 export async function sendModelRequest({ model, messages, systemPrompt, tools, maxTokens, temperature, signal }) {
   const modelCfg = getModelConfig(model);
   const apiKey = getApiKey(model);
-  if (!apiKey) {
+  const isLocalModel = SUPPLIER_REGISTRY[modelCfg.supplier]?.isLocal;
+  if (!apiKey && !isLocalModel) {
     throw new Error(`未设置 ${modelCfg.name} 的API Key`);
   }
 
@@ -685,8 +786,9 @@ export async function sendModelRequest({ model, messages, systemPrompt, tools, m
 export async function* sendModelRequestStream({ model, messages, systemPrompt, tools, maxTokens, temperature, signal }) {
   const modelCfg = getModelConfig(model);
   const apiKey = getApiKey(model);
+  const isLocalModel2 = SUPPLIER_REGISTRY[modelCfg.supplier]?.isLocal;
 
-  if (!apiKey) {
+  if (!apiKey && !isLocalModel2) {
     yield { type: 'error', error: `未设置 ${modelCfg.name} 的API Key` };
     return;
   }

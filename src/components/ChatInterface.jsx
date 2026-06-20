@@ -54,7 +54,7 @@ export default function ChatInterface() {
   const [showModelNameInput, setShowModelNameInput] = useState(false);
   const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
   const [showCustomForm, setShowCustomForm] = useState(false);
-  const [customForm, setCustomForm] = useState({ name: '', endpoint: '', protocol: 'openai', apiKey: '' });
+  const [customForm, setCustomForm] = useState({ name: '', endpoint: '', protocol: 'openai', apiKey: '', modelName: '' });
   const [toolSteps, setToolSteps] = useState([]);
   const [streamingText, setStreamingText] = useState('');
   const [animParams, setAnimParams] = useState({});
@@ -1109,18 +1109,20 @@ export default function ChatInterface() {
 
   const handleSaveCustomProvider = () => {
     if (!customForm.name.trim() || !customForm.endpoint.trim()) return;
-    saveCustomProvider({
+    if (!customForm.modelName.trim()) { alert('请填写模型名称（如 qwen2.5:7b）'); return; }
+    const newModelId = saveCustomProvider({
       name: customForm.name.trim(),
       endpoint: customForm.endpoint.trim(),
       protocol: customForm.protocol,
       apiKey: customForm.apiKey.trim(),
+      modelName: customForm.modelName.trim(),
     });
     if (customForm.apiKey.trim()) {
       setApiKey(customForm.name.trim(), customForm.apiKey.trim());
     }
-    setCustomForm({ name: '', endpoint: '', protocol: 'openai', apiKey: '' });
+    setCustomForm({ name: '', endpoint: '', protocol: 'openai', apiKey: '', modelName: '' });
     setShowCustomForm(false);
-    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `已添加自定义供应商: ${customForm.name}`, type: 'system' } });
+    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: `已添加自定义供应商: ${customForm.name}，模型: ${customForm.modelName}`, type: 'system' } });
   };
 
   const toolsAvailable = typeof window !== 'undefined'
@@ -1486,6 +1488,13 @@ export default function ChatInterface() {
                   <option value="openai">OpenAI 协议</option>
                   <option value="anthropic">Anthropic 协议</option>
                 </select>
+                <label>模型名称（必填）</label>
+                <input
+                  className="api-modal-input"
+                  value={customForm.modelName}
+                  onChange={e => setCustomForm({ ...customForm, modelName: e.target.value })}
+                  placeholder="例如：qwen2.5:7b 或 gpt-4o"
+                />
                 <label>API Key（可选）</label>
                 <input
                   className="api-modal-input"
