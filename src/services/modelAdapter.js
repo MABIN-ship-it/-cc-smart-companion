@@ -557,7 +557,7 @@ export function getAvailableModels() {
       apiKeyLabel: '',
       vision: false,
       description: cfg.description || '',
-      supplier: 'custom',
+      supplier: cfg.supplier || 'ollama',
     }));
   } catch {}
   return [...builtin, ...custom];

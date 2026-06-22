@@ -60,6 +60,8 @@ export default function ChatInterface() {
   const [deployInstallPhase, setDeployInstallPhase] = useState(null);
   const [deployInstallProgress, setDeployInstallProgress] = useState(null);
   const [deployInstallDir, setDeployInstallDir] = useState(null);
+  const [apiInputRefresh, setApiInputRefresh] = useState(0);
+  const [deployInstalledModels, setDeployInstalledModels] = useState(null);
   const [modelNameInput, setModelNameInput] = useState('');
   const [showModelNameInput, setShowModelNameInput] = useState(false);
   const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
@@ -491,6 +493,15 @@ export default function ChatInterface() {
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { if (showApiModal) apiKeyInputRef.current?.focus(); }, [showApiModal]);
 
+  // 打开 Ollama 页面时自动扫描已安装模型
+  useEffect(() => {
+    if (selectedSupplier === 'ollama' && window.electronAPI?.ollamaList) {
+      window.electronAPI.ollamaList().then(r => {
+        if (r.success) setDeployInstalledModels(r.models);
+      }).catch(() => {});
+    }
+  }, [selectedSupplier, apiInputRefresh]);
+
   // 监听 Ollama 安装进度
   useEffect(() => {
     if (!window.electronAPI?.onOllamaInstallProgress) return;
@@ -510,6 +521,7 @@ export default function ChatInterface() {
       const modelId = 'ollama-' + data.model.replace(/[:.]/g, '-');
       cm[modelId] = cfg;
       localStorage.setItem('cc_custom_models', JSON.stringify(cm));
+      setApiKey(modelId, 'ollama'); // Ollama 不需要真实 Key，给占位符
       setDeployReady(data.model);
       setDeployProgress(null);
       setApiInputRefresh(Date.now());
@@ -1801,7 +1813,41 @@ export default function ChatInterface() {
                         <div style={{fontSize:12, color:'var(--text-muted)', marginTop:4}}>{deployProgress.percent}%{deployProgress.total>0?' · '+(deployProgress.completed/1024/1024/1024).toFixed(1)+'/'+(deployProgress.total/1024/1024/1024).toFixed(1)+'GB':''}</div>
                       </div>
                     )}
-                    {deployReady && <div style={{fontSize:14, color:'#34d399', fontWeight:600, marginTop:8, textAlign:'center'}}>✅ {deployReady} 部署完成！</div>}
+                    {deployInstalledModels && deployInstalledModels.length > 0 && (
+                      <div style={{marginTop:8, padding:10, background:'rgba(52,211,153,0.08)', borderRadius:8, border:'1px solid rgba(52,211,153,0.2)'}}>
+                        <div style={{fontSize:12, color:'#34d399', fontWeight:600, marginBottom:6}}>📦 已安装的本地模型</div>
+                        <div className="model-chips" style={{flexWrap:'wrap'}}>
+                          {deployInstalledModels.map((m, i) => {
+                            const modelId = 'ollama-' + m.name.replace(/[:.]/g, '-');
+                            const isActive = selectedModel === modelId;
+                            return (
+                              <div key={i} className={`model-chip ${isActive ? 'active' : ''}`}
+                                style={{cursor:'pointer'}}
+                                onClick={() => {
+                                  const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
+                                  if (!cm[modelId]) {
+                                    const prefix = (m.source==='llamacpp')?'llamacpp':'ollama';
+                                    cm[modelId] = {
+                                      supplier:'ollama', name:prefix+': '+m.name,
+                                      endpoint:(m.source==='llamacpp')?'http://localhost:8080/v1/chat/completions':'http://localhost:11434/v1/chat/completions',
+                                      protocol:'openai', modelName:m.name, defaultMaxTokens:8192, contextWindow:32768,
+                                      description:'🏠 本地模型 '+m.name+'（已扫描）',
+                                    };
+                                    localStorage.setItem('cc_custom_models', JSON.stringify(cm));
+                                    setApiKey(modelId, 'ollama');
+                                  }
+                                  setSelectedModel(modelId);
+                                  setApiInputRefresh(Date.now());
+                                }}
+                              >
+                                <span className="model-chip-name">{m.name}{isActive ? ' ✅' : ''}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {deployReady && <div style={{fontSize:12, color:'#34d399', marginTop:4}}>✅ {deployReady} 刚部署完成，点上方「一键扫描」刷新列表</div>}
                   </div>
                   )}
 
