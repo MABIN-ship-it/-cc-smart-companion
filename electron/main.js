@@ -314,9 +314,11 @@ ipcMain.handle('ollama:ensure', async (event, opts) => {
   } catch {}
 
   if (!autoInstall) {
-    // 检查是否有残留下载
-    const dlPath = path.join(os.tmpdir(), 'OllamaSetup.exe');
-    const dlStatePath = path.join(os.tmpdir(), 'OllamaSetup.state.json');
+    // 检查是否有残留下载（下载文件统一放 AppData，不会被Windows清理）
+    const dlDir = path.join(process.env.APPDATA || os.homedir(), 'CC', 'ollama');
+    try { fs.mkdirSync(dlDir, {recursive:true}); } catch {}
+    const dlPath = path.join(dlDir, 'OllamaSetup.exe');
+    const dlStatePath = path.join(dlDir, 'OllamaSetup.state.json');
     let partial = null;
     try {
       if (fs.existsSync(dlPath)) {
@@ -329,32 +331,60 @@ ipcMain.handle('ollama:ensure', async (event, opts) => {
     return { installed: false, needConfirm: true, partialDownload: partial };
   }
 
-  // 自定义安装目录或默认
-  const installDir = (opts && opts.installDir) || path.join(os.homedir(), 'AppData', 'Local', 'Ollama');
-  const dlPath = path.join(os.tmpdir(), 'OllamaSetup.exe');
-  const dlStatePath = path.join(os.tmpdir(), 'OllamaSetup.state.json');
+  // 防止重复安装
+  if (_activeInstall) return { installed: false, error: '安装正在进行中' };
+  _activeInstall = true;
 
-  // 下载带进度
-  let _cancel = false;
-  event.sender.send('ollama:install:phase', 'downloading');
-  await new Promise((resolve, reject) => {
-    const https = require('https');
-    const req = https.get('https://dl.miniaimarket.cn/download/OllamaSetup.exe', (res2) => {
-      const total = parseInt(res2.headers['content-length'] || '0', 10);
-      const f = fs.createWriteStream(dlPath);
-      let downloaded = 0;
-      res2.on('data', (chunk) => {
-        if (_cancel) { req.destroy(); f.close(); fs.unlinkSync(dlPath); try { fs.unlinkSync(dlStatePath); } catch {} reject(new Error('cancelled')); return; }
-        downloaded += chunk.length;
-        f.write(chunk);
-        try { fs.writeFileSync(dlStatePath, JSON.stringify({downloaded, total})); } catch {}
-        event.sender.send('ollama:install:progress', { phase:'downloading', downloaded, total, speed:0 });
+  // 安装目录
+  const installDir = (opts && opts.installDir) || path.join(os.homedir(), 'AppData', 'Local', 'Ollama');
+  const dlDir = path.join(process.env.APPDATA || os.homedir(), 'CC', 'ollama');
+  try { fs.mkdirSync(dlDir, {recursive:true}); } catch {}
+  const dlPath = path.join(dlDir, 'OllamaSetup.exe');
+  const dlStatePath = path.join(dlDir, 'OllamaSetup.state.json');
+
+  // 如果已有完整文件，跳过下载
+  let skipDownload = false;
+  try { if (fs.existsSync(dlPath) && fs.statSync(dlPath).size > 1395032360 * 0.99) skipDownload = true; } catch {}
+
+  if (!skipDownload) {
+    event.sender.send('ollama:install:phase', 'downloading');
+    let _cancel = false;
+    _cancelMap.set('ollama-install', () => { _cancel = true; });
+    await new Promise((resolve, reject) => {
+      const https = require('https');
+      const req = https.get('https://dl.miniaimarket.cn/download/OllamaSetup.exe', (res2) => {
+        const total = parseInt(res2.headers['content-length'] || '1395032360', 10);
+        // 断点续传：检查已有文件大小
+        let downloaded = 0;
+        try { if (fs.existsSync(dlPath)) downloaded = fs.statSync(dlPath).size; } catch {}
+        const f = fs.createWriteStream(dlPath, { flags: downloaded > 0 ? 'a' : 'w' });
+        f.write = f.write.bind(f); // bind for safety
+        res2.on('data', (chunk) => {
+          if (_cancel) {
+            req.destroy(); f.close();
+            try { fs.writeFileSync(dlStatePath, JSON.stringify({downloaded, total})); } catch {}
+            reject(new Error('cancelled'));
+            return;
+          }
+          downloaded += chunk.length;
+          f.write(chunk);
+          try { fs.writeFileSync(dlStatePath, JSON.stringify({downloaded, total})); } catch {}
+          event.sender.send('ollama:install:progress', { phase:'downloading', downloaded, total });
+        });
+        res2.on('end', () => { f.end(); resolve(); });
+        res2.on('error', reject);
       });
-      res2.on('end', () => { f.end(); resolve(); });
-      res2.on('error', reject);
+      req.on('error', reject);
     });
-    req.on('error', reject);
+    _cancelMap.delete('ollama-install');
+  }
+
+  // 安装
+  event.sender.send('ollama:install:phase', 'installing');
+  await new Promise((resolve) => {
+    execFile(dlPath, ['/S', '/CURRENTUSER', `/D=${installDir}`], (err) => resolve());
   });
+  try { fs.unlinkSync(dlPath); fs.unlinkSync(dlStatePath); } catch {}
 
   if (_cancel) return { installed: false, cancelled: true };
 
@@ -369,14 +399,12 @@ ipcMain.handle('ollama:ensure', async (event, opts) => {
   // 等待启动
   event.sender.send('ollama:install:phase', 'starting');
   for (let i=0; i<30; i++) {
-    try { await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) }); event.sender.send('ollama:install:done'); return { installed: true }; }
+    try { await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) }); _activeInstall = false; event.sender.send('ollama:install:done'); return { installed: true }; }
     catch { await new Promise(r => setTimeout(r, 1000)); }
   }
+  _activeInstall = false;
   return { installed: false, error: 'Ollama 启动失败，请手动安装 https://ollama.com' };
 });
-
-// Ollama 安装取消（预留）
-ipcMain.on('ollama:install:cancel', () => {});
 
 // 3. 磁盘空间检查
 ipcMain.handle('disk:check', async (_event, modelSizeGB) => {
@@ -388,7 +416,12 @@ ipcMain.handle('disk:check', async (_event, modelSizeGB) => {
   return { ok: freeGB >= modelSizeGB * 2, freeGB, needGB: modelSizeGB * 2 };
 });
 
-// 4. 下载模型（带进度）
+// 4. Ollama 安装状态（模块级，跨请求）
+let _activeInstall = false;
+const _cancelMap = new Map();
+ipcMain.on('ollama:install:cancel', () => { const cb = _cancelMap.get('ollama-install'); if (cb) cb(); });
+
+// 5. 下载模型（带进度）
 const _activeDownloads = new Map();
 ipcMain.handle('model:download', async (event, modelName) => {
   const existing = (() => {
