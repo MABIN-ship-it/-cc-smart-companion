@@ -306,39 +306,77 @@ ipcMain.handle('hardware:detect', async () => {
 });
 
 // 2. Ollama 检测+安装
-ipcMain.handle('ollama:ensure', async () => {
+ipcMain.handle('ollama:ensure', async (event, opts) => {
+  const { autoInstall } = opts || {};
   try {
     const res = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
     return { installed: true, models: (await res.json()).models || [] };
   } catch {}
 
-  const { response } = await dialog.showMessageBox({
-    type: 'question', title: '需要安装 Ollama',
-    message: '本地模型需要 Ollama（约250MB）。是否自动下载并安装？\n\n将安装到当前用户目录，不需要管理员权限。',
-    buttons: ['自动安装', '取消'], cancelId: 1
-  });
-  if (response !== 0) return { installed: false, cancelled: true };
+  if (!autoInstall) {
+    // 检查是否有残留下载
+    const dlPath = path.join(os.tmpdir(), 'OllamaSetup.exe');
+    const dlStatePath = path.join(os.tmpdir(), 'OllamaSetup.state.json');
+    let partial = null;
+    try {
+      if (fs.existsSync(dlPath)) {
+        const sz = fs.statSync(dlPath).size;
+        let total = 1395032360; // 1.4GB
+        try { const st = JSON.parse(fs.readFileSync(dlStatePath,'utf-8')); if (st.total) total = st.total; } catch {}
+        if (sz < total * 0.99) partial = { downloaded: sz, total, path: dlPath };
+      }
+    } catch {}
+    return { installed: false, needConfirm: true, partialDownload: partial };
+  }
 
+  // 自定义安装目录或默认
+  const installDir = (opts && opts.installDir) || path.join(os.homedir(), 'AppData', 'Local', 'Ollama');
   const dlPath = path.join(os.tmpdir(), 'OllamaSetup.exe');
+  const dlStatePath = path.join(os.tmpdir(), 'OllamaSetup.state.json');
+
+  // 下载带进度
+  let _cancel = false;
+  event.sender.send('ollama:install:phase', 'downloading');
   await new Promise((resolve, reject) => {
     const https = require('https');
-    https.get('https://dl.miniaimarket.cn/download/OllamaSetup.exe', (res2) => {
+    const req = https.get('https://dl.miniaimarket.cn/download/OllamaSetup.exe', (res2) => {
+      const total = parseInt(res2.headers['content-length'] || '0', 10);
       const f = fs.createWriteStream(dlPath);
-      res2.pipe(f); f.on('finish', resolve); f.on('error', reject);
-    }).on('error', reject);
+      let downloaded = 0;
+      res2.on('data', (chunk) => {
+        if (_cancel) { req.destroy(); f.close(); fs.unlinkSync(dlPath); try { fs.unlinkSync(dlStatePath); } catch {} reject(new Error('cancelled')); return; }
+        downloaded += chunk.length;
+        f.write(chunk);
+        try { fs.writeFileSync(dlStatePath, JSON.stringify({downloaded, total})); } catch {}
+        event.sender.send('ollama:install:progress', { phase:'downloading', downloaded, total, speed:0 });
+      });
+      res2.on('end', () => { f.end(); resolve(); });
+      res2.on('error', reject);
+    });
+    req.on('error', reject);
   });
 
+  if (_cancel) return { installed: false, cancelled: true };
+
+  // 安装
+  event.sender.send('ollama:install:phase', 'installing');
   await new Promise((resolve) => {
-    execFile(dlPath, ['/S', '/CURRENTUSER'], (err) => resolve());
+    const args = ['/S', '/CURRENTUSER', `/D=${installDir}`];
+    execFile(dlPath, args, (err) => resolve());
   });
   try { fs.unlinkSync(dlPath); } catch {}
 
+  // 等待启动
+  event.sender.send('ollama:install:phase', 'starting');
   for (let i=0; i<30; i++) {
-    try { await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) }); return { installed: true }; }
+    try { await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) }); event.sender.send('ollama:install:done'); return { installed: true }; }
     catch { await new Promise(r => setTimeout(r, 1000)); }
   }
-  return { installed: false, error: 'Ollama failed to start. Install manually: https://ollama.com' };
+  return { installed: false, error: 'Ollama 启动失败，请手动安装 https://ollama.com' };
 });
+
+// Ollama 安装取消（预留）
+ipcMain.on('ollama:install:cancel', () => {});
 
 // 3. 磁盘空间检查
 ipcMain.handle('disk:check', async (_event, modelSizeGB) => {
@@ -360,7 +398,7 @@ ipcMain.handle('model:download', async (event, modelName) => {
     } catch { return []; }
   })();
   if (existing.some(m => m === modelName)) return { status: 'already' };
-  if (_activeDownloads.has(modelName)) return { status: 'downloading' };
+  if (_activeDownloads.has(modelName)) return { status: 'downloading', hint: '该模型正在下载中，请勿重复点击' };
 
   const env = { ...process.env, OLLAMA_HOST: 'https://ollama.modelscope.cn', OLLAMA_HTTP2: 'true' };
   const proc = spawn('ollama', ['pull', modelName], { env });

@@ -57,6 +57,8 @@ export default function ChatInterface() {
   const [deployProgress, setDeployProgress] = useState(null);
   const [deployReady, setDeployReady] = useState(null);
   const [deployModelSearch, setDeployModelSearch] = useState('');
+  const [deployInstallPhase, setDeployInstallPhase] = useState(null);
+  const [deployInstallProgress, setDeployInstallProgress] = useState(null);
   const [modelNameInput, setModelNameInput] = useState('');
   const [showModelNameInput, setShowModelNameInput] = useState(false);
   const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
@@ -487,6 +489,15 @@ export default function ChatInterface() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages, toolSteps]);
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { if (showApiModal) apiKeyInputRef.current?.focus(); }, [showApiModal]);
+
+  // 监听 Ollama 安装进度
+  useEffect(() => {
+    if (!window.electronAPI?.onOllamaInstallProgress) return;
+    const u1 = window.electronAPI.onOllamaInstallProgress(d => setDeployInstallProgress(d));
+    const u2 = window.electronAPI.onOllamaInstallPhase(d => setDeployInstallPhase(d));
+    const u3 = window.electronAPI.onOllamaInstallDone(() => { setDeployOllamaStatus('ok'); setDeployInstallProgress(null); setDeployInstallPhase(null); });
+    return () => { u1(); u2(); u3(); };
+  }, []);
 
   // 监听模型下载进度
   useEffect(() => {
@@ -1644,8 +1655,8 @@ export default function ChatInterface() {
                         setDeployHw(hw);
                         const recs = getModelRecommendations(hw.vramMB);
                         setDeployRecs(recs);
-                        const ollama = await window.electronAPI.ollamaEnsure();
-                        setDeployOllamaStatus(ollama.installed ? 'ok' : 'missing');
+                        const ollama = await window.electronAPI.ollamaEnsure({autoInstall:false});
+                        setDeployOllamaStatus(ollama.installed ? 'ok' : ollama.needConfirm ? 'needConfirm' : 'missing');
                       }}
                     >🔍 {deployHw ? '重新检测硬件' : '检测硬件并推荐模型'}</button>
 
@@ -1655,8 +1666,32 @@ export default function ChatInterface() {
                       </div>
                     )}
 
+                    {deployOllamaStatus === 'needConfirm' && (
+                      <div style={{marginTop:8, padding:10, background:'rgba(124,58,237,0.1)', borderRadius:8}}>
+                        <div style={{fontSize:13, color:'#c4b5fd', marginBottom:8}}>⚠️ 未检测到 Ollama。需要安装后才能使用本地模型（约1.4GB）。</div>
+                        <button className='api-modal-btn confirm active' style={{width:'100%', fontSize:13}}
+                          onClick={async () => {
+                            setDeployOllamaStatus('installing'); setDeployInstallPhase('downloading');
+                            const ensured = await window.electronAPI.ollamaEnsure({autoInstall:true});
+                            if (ensured.installed) setDeployOllamaStatus('ok');
+                            else { setDeployOllamaStatus('needConfirm'); setDeployInstallProgress(null); }
+                          }}
+                        >📥 自动安装（不弹UAC，约1.4GB）</button>
+                      </div>
+                    )}
+                    {deployOllamaStatus === 'installing' && (
+                      <div style={{marginTop:8, padding:10, background:'rgba(124,58,237,0.1)', borderRadius:8}}>
+                        <div style={{fontSize:13, color:'#c4b5fd', marginBottom:4}}>
+                          {deployInstallPhase==='downloading'?'📥 正在下载 Ollama...':deployInstallPhase==='installing'?'⚙️ 正在安装...':'⏳ 正在启动...'}
+                        </div>
+                        {deployInstallPhase==='downloading'&&deployInstallProgress&&(
+                          <><div style={{height:6,background:'rgba(255,255,255,0.08)',borderRadius:3,overflow:'hidden'}}><div style={{height:'100%',width:Math.round(deployInstallProgress.downloaded/deployInstallProgress.total*100)+'%',background:'linear-gradient(90deg,#7c3aed,#a78bfa)',borderRadius:3,transition:'width 0.3s'}}/></div>
+                          <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{(deployInstallProgress.downloaded/1048576).toFixed(0)}MB/{(deployInstallProgress.total/1048576).toFixed(0)}MB · {Math.round(deployInstallProgress.downloaded/deployInstallProgress.total*100)}%</div></>
+                        )}
+                      </div>
+                    )}
                     {deployOllamaStatus === 'missing' && (
-                      <div style={{fontSize:12, color:'#fbbf24', marginBottom:8}}>⚠️ 未检测到 Ollama，点击下载模型时会自动安装（不弹UAC）</div>
+                      <div style={{fontSize:12, color:'#fbbf24', marginBottom:8}}>⚠️ 未检测到 Ollama。点上方「自动安装」按钮。</div>
                     )}
 
                     {deployRecs && <div style={{maxHeight:260, overflowY:'auto', marginBottom:6}}>
@@ -1673,12 +1708,12 @@ export default function ChatInterface() {
                           {r.tier==='warn'&&<span style={{fontSize:12, color:'#fbbf24'}}>⚠️ 勉强</span>}
                           {r.tier==='no'&&<span style={{fontSize:12, color:'#6b7280'}}>❌ 显存不足</span>}
                           <button className="api-modal-btn confirm active" style={{padding:'6px 16px', fontSize:13, borderRadius:8}}
-                            disabled={!r.compatible}
+                            disabled={!r.compatible||deployOllamaStatus==='installing'||deployProgress}
                             onClick={async () => {
                               setDeployProgress({model:r.model, percent:0, completed:0, total:0});
                               if (deployOllamaStatus === 'missing') {
                                 setDeployOllamaStatus('installing');
-                                const ensured = await window.electronAPI.ollamaEnsure();
+                                const ensured = await window.electronAPI.ollamaEnsure({autoInstall:false});
                                 if (!ensured.installed) { setDeployProgress(null); setDeployOllamaStatus('missing'); return; }
                                 setDeployOllamaStatus('ok');
                               }
@@ -1706,7 +1741,7 @@ export default function ChatInterface() {
                             (async () => {
                               if (deployOllamaStatus === 'missing') {
                                 setDeployOllamaStatus('installing');
-                                const ensured = await window.electronAPI.ollamaEnsure();
+                                const ensured = await window.electronAPI.ollamaEnsure({autoInstall:false});
                                 if (!ensured.installed) { setDeployProgress(null); setDeployOllamaStatus('missing'); return; }
                                 setDeployOllamaStatus('ok');
                               }
@@ -1724,7 +1759,7 @@ export default function ChatInterface() {
                             setDeployProgress({model:m, percent:0, completed:0, total:0});
                             if (deployOllamaStatus === 'missing') {
                               setDeployOllamaStatus('installing');
-                              const ensured = await window.electronAPI.ollamaEnsure();
+                              const ensured = await window.electronAPI.ollamaEnsure({autoInstall:false});
                               if (!ensured.installed) { setDeployProgress(null); setDeployOllamaStatus('missing'); return; }
                               setDeployOllamaStatus('ok');
                             }

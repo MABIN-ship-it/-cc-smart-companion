@@ -119,7 +119,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 一键部署本地模型
   hardwareDetect: () => ipcRenderer.invoke('hardware:detect'),
-  ollamaEnsure: () => ipcRenderer.invoke('ollama:ensure'),
+  ollamaEnsure: (opts) => ipcRenderer.invoke('ollama:ensure', opts || {}),
+  onOllamaInstallProgress: (cb) => { const h=(_,d)=>cb(d); ipcRenderer.on('ollama:install:progress',h); return ()=>ipcRenderer.removeListener('ollama:install:progress',h); },
+  onOllamaInstallPhase: (cb) => { const h=(_,d)=>cb(d); ipcRenderer.on('ollama:install:phase',h); return ()=>ipcRenderer.removeListener('ollama:install:phase',h); },
+  onOllamaInstallDone: (cb) => { const h=()=>cb(); ipcRenderer.on('ollama:install:done',h); return ()=>ipcRenderer.removeListener('ollama:install:done',h); },
+  ollamaInstallCancel: () => ipcRenderer.send('ollama:install:cancel'),
   diskCheck: (modelSizeGB) => ipcRenderer.invoke('disk:check', modelSizeGB),
   modelDownload: (modelName) => ipcRenderer.invoke('model:download', modelName),
   ollamaRestart: () => ipcRenderer.invoke('ollama:restart'),
