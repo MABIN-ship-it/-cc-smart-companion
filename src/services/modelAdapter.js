@@ -88,8 +88,8 @@ const SUPPLIER_REGISTRY = {
     defaultModel: 'siliconflow-deepseek-v3',
   },
   ollama: {
-    id: 'ollama', name: 'Ollama (本地模型)',
-    note: '本地运行的 Ollama 模型，无需联网，零费用',
+    id: 'ollama', name: '本地模型 (Ollama + llama.cpp)',
+    note: '本地运行的模型（Ollama / llama.cpp / Cookbook），无需联网，零费用',
     registerUrl: 'https://ollama.com/download',
     apiKeyLabel: 'API Key（留空即可）',
     defaultModel: 'ollama-qwen2.5-7b',

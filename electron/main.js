@@ -212,31 +212,48 @@ ipcMain.handle('get-app-path', () => {
   return app.getPath('userData');
 });
 
-// 扫描本地 Ollama 模型
+// 扫描本地模型（Ollama 11434 + llama.cpp/Cookbook 8080）
 ipcMain.handle('ollama:list', async () => {
+  const models = [];
+  let hasOllama = false;
+
+  // ── 方式1：Ollama CLI（端口 11434）──
   try {
     const { execSync } = require('child_process');
     const output = execSync('ollama list', { timeout: 10000, encoding: 'buffer' });
-    // Windows 中文环境 ollama 输出可能是 UTF-8 或 GBK，先试 UTF-8
     let decoded = output.toString('utf-8');
-    if (decoded.includes('NAME')) {
-      // UTF-8 OK
-    } else {
-      // 尝试 GBK（Windows 中文控制台默认编码）
+    if (!decoded.includes('NAME')) {
       try { decoded = new TextDecoder('gbk').decode(output); } catch {}
     }
     const lines = decoded.trim().split('\n');
-    const models = [];
-    // 跳过表头行
     for (let i = 1; i < lines.length; i++) {
       const name = lines[i].trim().split(/\s+/)[0];
-      if (name && name.indexOf('/') === -1) { // 跳过无效行
-        models.push({ name, label: name.split(':')[0] + ' (' + name.split(':')[1] + ')' });
+      if (name && name.indexOf('/') === -1) {
+        models.push({ name, label: name.split(':')[0] + ' (' + name.split(':')[1] + ')', source: 'ollama' });
       }
     }
+    if (models.length > 0) hasOllama = true;
+  } catch (e) { /* Ollama 未安装，忽略 */ }
+
+  // ── 方式2：llama.cpp / Cookbook（端口 8080，OpenAI 兼容 API）──
+  try {
+    const res = await fetch('http://localhost:8080/v1/models', { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json();
+      const list = data?.data || [];
+      for (const m of list) {
+        const name = m.id || '';
+        if (name) {
+          models.push({ name, label: name + ' (llama.cpp)', source: 'llamacpp' });
+        }
+      }
+    }
+  } catch (e) { /* 8080 无服务，忽略 */ }
+
+  if (models.length > 0) {
     return { success: true, models };
-  } catch (e) {
-    return { success: false, error: '本机未安装 Ollama。请先前往 ollama.com 下载安装，安装后重启CC再扫描。' };
+  } else {
+    return { success: true, models: [] };
   }
 });
 

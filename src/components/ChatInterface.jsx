@@ -50,6 +50,7 @@ export default function ChatInterface() {
   const [showApiModal, setShowApiModal] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(getCurrentModel());
+  const [scanResult8080, setScanResult8080] = useState(null);
   const [modelNameInput, setModelNameInput] = useState('');
   const [showModelNameInput, setShowModelNameInput] = useState(false);
   const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
@@ -1574,11 +1575,15 @@ export default function ChatInterface() {
                             if (result.success && result.models.length > 0) {
                               const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
                               result.models.forEach(m => {
-                                const modelId = 'ollama-' + m.name.replace(/[:.]/g, '-');
+                                const prefix = (m.source==='llamacpp')?'llamacpp':'ollama';
+                                const modelId = prefix + '-' + m.name.replace(/[:.]/g, '-');
+                                const endpoint = (m.source==='llamacpp')
+                                  ? 'http://localhost:8080/v1/chat/completions'
+                                  : 'http://localhost:11434/v1/chat/completions';
                                 cm[modelId] = {
                                   supplier: 'ollama',
-                                  name: 'Ollama: ' + m.name,
-                                  endpoint: 'http://localhost:11434/v1/chat/completions',
+                                  name: ((m.source==='llamacpp')?'llama.cpp: ':'Ollama: ') + m.name,
+                                  endpoint: endpoint,
                                   protocol: 'openai',
                                   modelName: m.name,
                                   defaultMaxTokens: 8192,
@@ -1588,9 +1593,10 @@ export default function ChatInterface() {
                               });
                               localStorage.setItem('cc_custom_models', JSON.stringify(cm));
                               setApiInputRefresh(Date.now());
-                              alert(`已扫描到 ${result.models.length} 个本地模型，请返回供应商列表重新进入查看`);
+                              setApiInputRefresh(Date.now()); // 立即刷新列表
+                              showToast(`已扫描到 ${result.models.length} 个本地模型`);
                             } else if (result.success) {
-                              alert('未扫描到本地模型。请先在终端执行 ollama pull <模型名> 下载模型');
+                              alert('未检测到本地模型。请先通过 Ollama 或 Cookbook 下载模型，再点扫描。');
                             } else {
                               alert(result.error || '扫描失败');
                             }
@@ -1640,6 +1646,19 @@ export default function ChatInterface() {
                     </div>
                     {currentModelCfg?.description && (
                       <div className="model-description">{currentModelCfg.description}</div>
+                    )}
+                    {/* 自定义模型名输入框（选择「自定义模型名」时显示） */}
+                    {(selectedModel === 'ollama-custom') && (
+                      <div style={{marginTop: 8}}>
+                        <label>模型名称（在终端输入 ollama list 查看）</label>
+                        <input
+                          className="api-modal-input"
+                          value={modelNameInput}
+                          onChange={e => setModelNameInput(e.target.value)}
+                          placeholder="如 llama3.2:3b"
+                          autoFocus
+                        />
+                      </div>
                     )}
                   </div>
 
