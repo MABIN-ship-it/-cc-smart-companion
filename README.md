@@ -1,7 +1,7 @@
 # CC - Your Desktop AI Companion | 你的桌面 AI 伙伴
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.1-blue)]()
+[![Version](https://img.shields.io/badge/version-1.0.8-blue)]()
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey)]()
 [![Electron](https://img.shields.io/badge/electron-42-blue)]()
 
@@ -42,6 +42,9 @@
 | 🤖 **Auto Tasks** — Scans Feishu for pending tasks, generates reports, processes approvals | 🤖 **主动接任务** — 自动扫描飞书待办、生成日报周报、处理审批 |
 | ⏰ **Scheduled** — Auto-execution at 9/11/15/17/19/24 daily | ⏰ **定时执行** — 每日 9/11/15/17/19/24 点自动扫描 |
 | 🎤 **TTS / STT** — Edge TTS + local faster-whisper voice recognition | 🎤 **语音交互** — Edge TTS 语音合成 + 本地语音识别 |
+| 🏠 **Local Models** — One-click scan Ollama (11434) + llama.cpp/Cookbook (8080), custom model name input | 🏠 **本地模型** — 一键扫描 Ollama + llama.cpp/Cookbook 本地模型，支持自定义模型名 |
+| 🔄 **Auto Update** — Background download + one-click restart via CDN | 🔄 **自动更新** — 后台下载新版 + 弹窗一键重启 |
+| ⚡ **One-click Deploy** — `deploy-release.bat` full pipeline: build → CDN → latest.yml → done | ⚡ **一键发布** — deploy-release.bat 全链路：构建 → 上传 → latest.yml → 完成 |
 
 ## 📸 Screenshots | 截图
 
@@ -64,7 +67,7 @@
 | 🇨🇳 **Gitee**（国内用户） | [Releases](https://gitee.com/mabin-cici/cc-smart-companion-public/releases) |
 | 🌍 **GitHub**（海外用户） | [Releases](https://github.com/MABIN-ship-it/-cc-smart-companion/releases) |
 
-下载 `CC你的终身好友 Setup 1.0.1.exe`，双击一键安装。
+下载 `CC你的终身好友 Setup 1.0.8.exe`，双击一键安装。或访问 [miniaimarket.cn](https://miniaimarket.cn) 直接下载。
 
 系统要求：**Windows 10/11 x64**
 
@@ -137,5 +140,17 @@ Issues and PRs welcome. | 欢迎提交 Issue 和 PR。
 MIT © 2026 Mabincici (马斌)
 
 ---
+
+## 📝 Changelog | 更新日志
+
+| 版本 | 日期 | 更新内容 |
+|------|------|----------|
+| **1.0.8** | 2026-06-22 | 🏠 本地模型界面优化：标签改名、自定义模型名输入框、扫描结果自动刷新。新增 deploy-release.bat 一键发布脚本 |
+| **1.0.7** | 2026-06-21 | 🔍 一键扫描本地模型：同时检测 Ollama (11434) + llama.cpp/Cookbook (8080) 双端口 |
+| **1.0.6** | 2026-06-20 | 🦙 Ollama 内置供应商 + 自定义供应商模型注册修复 |
+| **1.0.5** | 2026-06-18 | 🐍 Python 自动下载+静默安装、pip 清华镜像、CDN 预热脚本 |
+| **1.0.4** | 2026-06-18 | 🔄 自动更新系统：后台下载新版 + 弹窗一键重启 |
+| **1.0.3** | 2026-06-18 | 🔧 Python 缺失时 TTS 静默跳过、更新检查 URL 修复 |
+| **1.0.2** | 2026-06-11 | 🎉 初始发布版 |
 
 📧 Contact | 联系：Mabincici <1357502777@qq.com>　|　🎵 抖音交流群：253968290900　|　🌐 [miniaimarket.cn](https://miniaimarket.cn)
