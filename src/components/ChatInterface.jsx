@@ -16,7 +16,7 @@ import { createEmotionEngine } from '../services/emotionEngine';
 import { createPresenceManager } from '../services/presenceManager';
 import { getRelationship, recordConversation, getLevelInfo } from '../services/relationshipTracker';
 import { initNetworkMonitor, categorizeError, isRetryable, withRetry } from '../services/errorHandler';
-import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey, getSuppliers, getSupplierDefaultModel, getCustomProviders, saveCustomProvider, deleteCustomProvider, getExtraHeader, setExtraHeader, getUserModelName, setUserModelName, sendModelRequest } from '../services/modelAdapter';
+import { getAvailableModels, getCurrentModel, setCurrentModel, setApiKey, getApiKey, getSuppliers, getSupplierDefaultModel, getCustomProviders, saveCustomProvider, deleteCustomProvider, getExtraHeader, setExtraHeader, getUserModelName, setUserModelName, sendModelRequest, getModelRecommendations, getOllamaAutoConfig } from '../services/modelAdapter';
 import { setWorkspaceContext } from '../services/toolRegistry';
 import { analyzeProject } from '../services/projectContext';
 import { addDocumentFromFile } from '../services/knowledgeBase';
@@ -51,6 +51,12 @@ export default function ChatInterface() {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [selectedModel, setSelectedModel] = useState(getCurrentModel());
   const [scanResult8080, setScanResult8080] = useState(null);
+  const [deployHw, setDeployHw] = useState(null);
+  const [deployRecs, setDeployRecs] = useState(null);
+  const [deployOllamaStatus, setDeployOllamaStatus] = useState('checking');
+  const [deployProgress, setDeployProgress] = useState(null);
+  const [deployReady, setDeployReady] = useState(null);
+  const [deployModelSearch, setDeployModelSearch] = useState('');
   const [modelNameInput, setModelNameInput] = useState('');
   const [showModelNameInput, setShowModelNameInput] = useState(false);
   const [extraHeaderInputs, setExtraHeaderInputs] = useState({});
@@ -481,6 +487,24 @@ export default function ChatInterface() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [state.messages, toolSteps]);
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { if (showApiModal) apiKeyInputRef.current?.focus(); }, [showApiModal]);
+
+  // 监听模型下载进度
+  useEffect(() => {
+    if (!window.electronAPI?.onModelProgress) return;
+    const unsub1 = window.electronAPI.onModelProgress((data) => setDeployProgress(data));
+    const unsub2 = window.electronAPI.onModelDone((data) => {
+      const cfg = getOllamaAutoConfig(data.model);
+      const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
+      const modelId = 'ollama-' + data.model.replace(/[:.]/g, '-');
+      cm[modelId] = cfg;
+      localStorage.setItem('cc_custom_models', JSON.stringify(cm));
+      setDeployReady(data.model);
+      setDeployProgress(null);
+      setApiInputRefresh(Date.now());
+    });
+    const unsub3 = window.electronAPI.onModelError(() => { setDeployProgress(null); });
+    return () => { unsub1(); unsub2(); unsub3(); };
+  }, []);
 
   const handleStop = useCallback(() => {
     if (abortRef.current) {
@@ -1609,11 +1633,129 @@ export default function ChatInterface() {
                     </div>
                   )}
 
+                  {/* 🚀 一键部署本地模型 */}
+                  {supplier.id === 'ollama' && (
+                  <div style={{marginTop:12, padding:14, background:'linear-gradient(135deg, rgba(124,58,237,0.12), rgba(139,92,246,0.06))', borderRadius:12, border:'1px solid rgba(139,92,246,0.25)'}}>
+                    <div style={{fontSize:15, fontWeight:700, color:'#c4b5fd', marginBottom:8}}>🚀 一键部署本地模型</div>
+
+                    <button className="api-modal-btn confirm active" style={{width:'100%', marginBottom:8}}
+                      onClick={async () => {
+                        const hw = await window.electronAPI.hardwareDetect();
+                        setDeployHw(hw);
+                        const recs = getModelRecommendations(hw.vramMB);
+                        setDeployRecs(recs);
+                        const ollama = await window.electronAPI.ollamaEnsure();
+                        setDeployOllamaStatus(ollama.installed ? 'ok' : 'missing');
+                      }}
+                    >🔍 {deployHw ? '重新检测硬件' : '检测硬件并推荐模型'}</button>
+
+                    {deployHw && (
+                      <div style={{fontSize:12, color:'var(--text-secondary)', marginBottom:8}}>
+                        🖥️ {deployHw.gpu} · {deployHw.vramMB}MB 显存 · {deployHw.ramGB}GB 内存
+                      </div>
+                    )}
+
+                    {deployOllamaStatus === 'missing' && (
+                      <div style={{fontSize:12, color:'#fbbf24', marginBottom:8}}>⚠️ 未检测到 Ollama，点击下载模型时会自动安装（不弹UAC）</div>
+                    )}
+
+                    {deployRecs && <div style={{maxHeight:260, overflowY:'auto', marginBottom:6}}>
+                    {deployRecs.map((r, i) => (
+                      <div key={i} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', marginBottom:6, borderRadius:8, background:r.tier==='best'?'rgba(52,211,153,0.12)':r.tier==='warn'?'rgba(251,191,36,0.1)':r.tier==='no'?'rgba(75,85,99,0.1)':'rgba(255,255,255,0.03)', border:r.tier==='best'?'1px solid rgba(52,211,153,0.3)':r.tier==='warn'?'1px solid rgba(251,191,36,0.2)':'1px solid transparent', opacity:r.tier==='no'?0.4:1}}>
+                        <div>
+                          <span style={{fontSize:14, fontWeight:600, color:'var(--text-primary)'}}>{r.model}</span>
+                          <span style={{fontSize:12, color:'var(--text-muted)', marginLeft:10}}>{r.sizeGB}GB</span>
+                          <span style={{fontSize:12, color:'var(--text-muted)', marginLeft:6}}>· {r.label}</span>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                          {r.tier==='best'&&<span style={{fontSize:12, color:'#34d399', fontWeight:600}}>✅ 推荐</span>}
+                          {r.tier==='ok'&&<span style={{fontSize:12, color:'#a3a3a3'}}>可运行</span>}
+                          {r.tier==='warn'&&<span style={{fontSize:12, color:'#fbbf24'}}>⚠️ 勉强</span>}
+                          {r.tier==='no'&&<span style={{fontSize:12, color:'#6b7280'}}>❌ 显存不足</span>}
+                          <button className="api-modal-btn confirm active" style={{padding:'6px 16px', fontSize:13, borderRadius:8}}
+                            disabled={!r.compatible}
+                            onClick={async () => {
+                              setDeployProgress({model:r.model, percent:0, completed:0, total:0});
+                              if (deployOllamaStatus === 'missing') {
+                                setDeployOllamaStatus('installing');
+                                const ensured = await window.electronAPI.ollamaEnsure();
+                                if (!ensured.installed) { setDeployProgress(null); setDeployOllamaStatus('missing'); return; }
+                                setDeployOllamaStatus('ok');
+                              }
+                              const result = await window.electronAPI.modelDownload(r.model);
+                              if (result.status==='done'||result.status==='already') {
+                                setDeployReady(r.model); setDeployProgress(null);
+                                setApiInputRefresh(Date.now());
+                              }
+                            }}
+                          >⬇️ 下载</button>
+                        </div>
+                      </div>
+                    ))}</div>}
+                    {/* 搜索自定义模型 */}
+                    <div style={{marginTop:10, padding:8, background:'rgba(255,255,255,0.03)', borderRadius:8}}>
+                      <div style={{fontSize:12, color:'var(--text-muted)', marginBottom:6}}>💡 以上没有你想要的？搜 Ollama 官方库（300+ 模型）：</div>
+                      <div style={{display:'flex', gap:6}}>
+                        <input className="api-modal-input" style={{flex:1, marginBottom:0}}
+                          placeholder="输入模型名搜索，如 qwen3:235b、codellama:7b..."
+                          value={deployModelSearch}
+                          onChange={e => setDeployModelSearch(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter' && deployModelSearch.trim()) {
+                            const m = deployModelSearch.trim();
+                            setDeployProgress({model:m, percent:0, completed:0, total:0});
+                            (async () => {
+                              if (deployOllamaStatus === 'missing') {
+                                setDeployOllamaStatus('installing');
+                                const ensured = await window.electronAPI.ollamaEnsure();
+                                if (!ensured.installed) { setDeployProgress(null); setDeployOllamaStatus('missing'); return; }
+                                setDeployOllamaStatus('ok');
+                              }
+                              const result = await window.electronAPI.modelDownload(m);
+                              if (result.status==='done'||result.status==='already') {
+                                setDeployReady(m); setDeployProgress(null); setDeployModelSearch('');
+                                setApiInputRefresh(Date.now());
+                              }
+                            })();
+                          }}}
+                        />
+                        <button className="api-modal-btn confirm active" style={{whiteSpace:'nowrap', padding:'8px 16px'}}
+                          onClick={async () => {
+                            const m = deployModelSearch.trim(); if (!m) return;
+                            setDeployProgress({model:m, percent:0, completed:0, total:0});
+                            if (deployOllamaStatus === 'missing') {
+                              setDeployOllamaStatus('installing');
+                              const ensured = await window.electronAPI.ollamaEnsure();
+                              if (!ensured.installed) { setDeployProgress(null); setDeployOllamaStatus('missing'); return; }
+                              setDeployOllamaStatus('ok');
+                            }
+                            const result = await window.electronAPI.modelDownload(m);
+                            if (result.status==='done'||result.status==='already') {
+                              setDeployReady(m); setDeployProgress(null); setDeployModelSearch('');
+                              setApiInputRefresh(Date.now());
+                            }
+                          }}
+                        >⬇️ 下载</button>
+                      </div>
+                    </div>
+
+                    {deployProgress && (
+                      <div style={{marginTop:10, padding:12, background:'rgba(0,0,0,0.2)', borderRadius:8}}>
+                        <div style={{fontSize:13, fontWeight:600, color:'var(--text-primary)'}}>⏳ 正在下载 {deployProgress.model}</div>
+                        <div style={{height:8, background:'rgba(255,255,255,0.08)', borderRadius:4, overflow:'hidden', marginTop:4}}>
+                          <div style={{height:'100%', width:deployProgress.percent+'%', background:'linear-gradient(90deg, #7c3aed, #a78bfa)', borderRadius:4, transition:'width 0.3s'}} />
+                        </div>
+                        <div style={{fontSize:12, color:'var(--text-muted)', marginTop:4}}>{deployProgress.percent}%{deployProgress.total>0?' · '+(deployProgress.completed/1024/1024/1024).toFixed(1)+'/'+(deployProgress.total/1024/1024/1024).toFixed(1)+'GB':''}</div>
+                      </div>
+                    )}
+                    {deployReady && <div style={{fontSize:14, color:'#34d399', fontWeight:600, marginTop:8, textAlign:'center'}}>✅ {deployReady} 部署完成！</div>}
+                  </div>
+                  )}
+
                   {/* 模型芯片 */}
                   <div>
                     <label>选择模型</label>
                     <div className="model-chips">
-                      {supplier.models.map(m => (
+                      {supplier.models.map(m => (m.id !== 'ollama-custom' ? (
                         <div
                           key={m.id}
                           className={`model-chip ${selectedModel === m.id ? 'active' : ''}`}
@@ -1639,7 +1781,17 @@ export default function ChatInterface() {
                           )}</span>
                           <span className="model-chip-name">{m.name}</span>
                         </div>
-                      ))}
+                      ) : null))}
+                      {/* ollama-custom 始终显示 */}
+                      {supplier.models.find(m => m.id === 'ollama-custom') && ((() => {
+                        const cm = supplier.models.find(m => m.id === 'ollama-custom');
+                        return (
+                          <div key={cm.id} className={`model-chip ${selectedModel === cm.id ? 'active' : ''}`} data-tooltip={cm.description}
+                            onClick={() => { setSelectedModel(cm.id); setApiKeyInput(getApiKey(cm.id) || ''); }}>
+                            <span className="model-chip-name">{cm.name}</span>
+                          </div>
+                        );
+                      })())}
                     </div>
                     <div className="api-modal-context">
                       上下文：{currentModelCfg?.contextWindow?.toLocaleString() || '未知'} tokens | {currentModelCfg?.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI'} 协议

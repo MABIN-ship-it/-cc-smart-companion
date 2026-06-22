@@ -88,11 +88,11 @@ const SUPPLIER_REGISTRY = {
     defaultModel: 'siliconflow-deepseek-v3',
   },
   ollama: {
-    id: 'ollama', name: '本地模型 (Ollama + llama.cpp)',
-    note: '本地运行的模型（Ollama / llama.cpp / Cookbook），无需联网，零费用',
+    id: 'ollama', name: '一键部署本地模型',
+    note: '本地运行的模型（Ollama / llama.cpp），无需联网零费用。点下方「检测硬件并推荐模型」一键部署',
     registerUrl: 'https://ollama.com/download',
     apiKeyLabel: 'API Key（留空即可）',
-    defaultModel: 'ollama-qwen2.5-7b',
+    defaultModel: 'ollama-custom',
     isLocal: true,
   },
   custom: {
@@ -314,47 +314,7 @@ const MODEL_REGISTRY = {
     protocol: 'openai', defaultMaxTokens: 4096, contextWindow: 131072,
     description: '🌍 硅谷部署的DeepSeek V3，通过SiliconFlow平台访问——国内直连延迟低。缺点：第三方平台，服务稳定性依赖上游。适合：想要DeepSeek品质+更低延迟',
   },
-  // ── Ollama 本地模型 ──
-  'ollama-qwen2.5-7b': {
-    supplier: 'ollama',
-    name: 'Qwen 2.5 7B (本地)',
-    endpoint: 'http://localhost:11434/v1/chat/completions',
-    modelName: 'qwen2.5:7b',
-    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
-    description: '🏠 通义千问2.5 7B版本，本地运行零费用。中文能力出色，日常聊天/翻译/写作均佳。需先 ollama pull qwen2.5:7b',
-  },
-  'ollama-qwen2.5-14b': {
-    supplier: 'ollama',
-    name: 'Qwen 2.5 14B (本地)',
-    endpoint: 'http://localhost:11434/v1/chat/completions',
-    modelName: 'qwen2.5:14b',
-    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
-    description: '🏠 通义千问2.5 14B版本，智能水平显著提升。需要16GB以上显存。需先 ollama pull qwen2.5:14b',
-  },
-  'ollama-deepseek-r1-7b': {
-    supplier: 'ollama',
-    name: 'DeepSeek R1 7B (本地)',
-    endpoint: 'http://localhost:11434/v1/chat/completions',
-    modelName: 'deepseek-r1:7b',
-    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
-    description: '🏠 DeepSeek推理模型7B版本，数学/逻辑/代码推理超强。需先 ollama pull deepseek-r1:7b',
-  },
-  'ollama-llama3.1-8b': {
-    supplier: 'ollama',
-    name: 'Llama 3.1 8B (本地)',
-    endpoint: 'http://localhost:11434/v1/chat/completions',
-    modelName: 'llama3.1:8b',
-    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
-    description: '🏠 Meta开源旗舰模型8B版本，英文能力顶级，中文一般。需先 ollama pull llama3.1:8b',
-  },
-  'ollama-codestral-22b': {
-    supplier: 'ollama',
-    name: 'Codestral 22B (本地)',
-    endpoint: 'http://localhost:11434/v1/chat/completions',
-    modelName: 'codestral:22b',
-    protocol: 'openai', defaultMaxTokens: 8192, contextWindow: 32768,
-    description: '🏠 编程专用本地模型，代码生成/补全/重构能力突出。需24GB显存。需先 ollama pull codestral:22b',
-  },
+  // ── Ollama 本地模型（通过上方一键部署或一键扫描添加）──
   'ollama-custom': {
     supplier: 'ollama',
     name: 'Ollama (自定义模型名)',
@@ -364,6 +324,117 @@ const MODEL_REGISTRY = {
     description: '🏠 使用你已下载的其他Ollama模型。请在模型名称里填入 ollama list 显示的完整名称（如 llama3.2:3b）',
   },
 };
+
+// ─── 本地模型推荐表（一键部署用）────────────────────────────────
+export const LOCAL_MODEL_RECOMMENDATIONS = [
+  // ⬛ 代码类
+  { vramMB: 2048,  model:'qwen2.5-coder:0.5b',      sizeGB:0.3,  label:'AI编程·0.5B'},
+  { vramMB: 2048,  model:'qwen2.5-coder:1.5b',      sizeGB:0.9,  label:'AI编程·1.5B'},
+  { vramMB: 3072,  model:'qwen2.5-coder:3b',        sizeGB:1.8,  label:'AI编程·3B'},
+  { vramMB: 6144,  model:'qwen2.5-coder:7b',        sizeGB:4.2,  label:'AI编程·7B'},
+  { vramMB:12288,  model:'qwen2.5-coder:14b',       sizeGB:8.4,  label:'AI编程·14B'},
+  { vramMB:16384,  model:'codellama:7b',            sizeGB:4.2,  label:'Meta编程·7B'},
+  { vramMB:16384,  model:'codellama:13b',           sizeGB:7.8,  label:'Meta编程·13B'},
+  { vramMB:24576,  model:'codellama:34b',           sizeGB:20,   label:'Meta编程·34B'},
+  { vramMB:32768,  model:'deepseek-coder-v2:16b',   sizeGB:9.6,  label:'DS编程·16B'},
+  { vramMB: 2048,  model:'starcoder2:3b',           sizeGB:1.8,  label:'StarCoder·3B'},
+  // ⬛ 数学推理
+  { vramMB: 2048,  model:'qwen2.5-math:1.5b',       sizeGB:1.4,  label:'数学·1.5B'},
+  { vramMB: 6144,  model:'qwen2.5-math:7b',         sizeGB:4.2,  label:'数学·7B'},
+  // ⬛ VL多模态
+  { vramMB: 4096,  model:'qwen2.5-vl:3b',           sizeGB:4.2,  label:'视觉理解·3B'},
+  { vramMB: 8192,  model:'qwen2.5-vl:7b',           sizeGB:8.6,  label:'视觉理解·7B'},
+  { vramMB: 8192,  model:'minicpm-v:8b',            sizeGB:4.8,  label:'端侧视觉·8B'},
+  { vramMB: 4096,  model:'llava:7b',                sizeGB:4.2,  label:'LLaVA视觉·7B'},
+  { vramMB:12288,  model:'llava:13b',               sizeGB:7.8,  label:'LLaVA视觉·13B'},
+  // ⬛ 超轻量 < 1GB
+  { vramMB: 1024,  model:'qwen3:0.6b',              sizeGB:0.4,  label:'中文迷你·0.6B'},
+  { vramMB: 1024,  model:'qwen2.5:0.5b',            sizeGB:0.3,  label:'极致轻量·0.5B'},
+  { vramMB: 1024,  model:'smollm2:360m',            sizeGB:0.2,  label:'微型·360M'},
+  { vramMB: 1024,  model:'llama3.2:1b',             sizeGB:0.6,  label:'Meta入门·1B'},
+  { vramMB: 1024,  model:'qwen2.5-coder:0.5b',      sizeGB:0.3,  label:'迷你编程·0.5B'},
+  { vramMB: 1024,  model:'granite3.1-dense:2b',     sizeGB:1.2,  label:'IBM轻量·2B'},
+  // ⬛ 轻量 1-3GB
+  { vramMB: 2048,  model:'qwen3:1.7b',              sizeGB:1.0,  label:'中文轻量·1.7B'},
+  { vramMB: 2048,  model:'deepseek-r1:1.5b',        sizeGB:0.9,  label:'推理入门·1.5B'},
+  { vramMB: 2048,  model:'llama3.2:3b',             sizeGB:2.0,  label:'Meta轻量·3B'},
+  { vramMB: 2048,  model:'gemma2:2b',               sizeGB:1.2,  label:'Google轻量·2B'},
+  { vramMB: 2048,  model:'gemma3:1b',               sizeGB:0.6,  label:'Google迷你·1B'},
+  { vramMB: 2048,  model:'smollm2:1.7b',            sizeGB:1.0,  label:'轻量·1.7B'},
+  { vramMB: 2048,  model:'qwen2.5:1.5b',            sizeGB:0.9,  label:'经典轻量·1.5B'},
+  // ⬛ 中量 3-6GB
+  { vramMB: 4096,  model:'qwen3:4b',                sizeGB:2.4,  label:'中文入门·4B'},
+  { vramMB: 4096,  model:'gemma3:4b',               sizeGB:2.4,  label:'Google均衡·4B'},
+  { vramMB: 4096,  model:'phi-4-mini:3.8b',         sizeGB:2.8,  label:'微软轻量·3.8B'},
+  { vramMB: 4096,  model:'qwen2.5:3b',              sizeGB:1.8,  label:'中文经典·3B'},
+  { vramMB: 4096,  model:'gemma2:9b',               sizeGB:5.4,  label:'Google中量·9B'},
+  { vramMB: 4096,  model:'mistral-nemo:12b',        sizeGB:7.2,  label:'Mistral中层·12B'},
+  { vramMB: 4096,  model:'phi3:mini',               sizeGB:2.8,  label:'微软3代·3.8B'},
+  // ⬛ 主流 6-10GB
+  { vramMB: 6144,  model:'qwen3:8b',                sizeGB:4.8,  label:'🔥中文首选·8B'},
+  { vramMB: 6144,  model:'llama3.1:8b',             sizeGB:4.8,  label:'Meta旗舰·8B'},
+  { vramMB: 6144,  model:'deepseek-r1:8b',          sizeGB:4.8,  label:'🔥推理王者·8B'},
+  { vramMB: 6144,  model:'mistral:7b',              sizeGB:4.2,  label:'欧洲首选·7B'},
+  { vramMB: 6144,  model:'glm4:9b',                 sizeGB:5.4,  label:'智谱清言·9B'},
+  { vramMB: 6144,  model:'qwen2.5:7b',              sizeGB:4.2,  label:'中文经典·7B'},
+  { vramMB: 6144,  model:'yi:9b',                   sizeGB:5.9,  label:'零一万物·9B'},
+  { vramMB: 6144,  model:'gemma3:12b',              sizeGB:7.2,  label:'Google主力·12B'},
+  { vramMB: 6144,  model:'command-r:35b',           sizeGB:21,   label:'Cohere·35B'},
+  { vramMB: 8192,  model:'llama3.1:70b',            sizeGB:42,   label:'Meta70B'},
+  // ⬛ 重量 10-16GB
+  { vramMB:12288,  model:'qwen3:14b',               sizeGB:8.4,  label:'🔥中文强力·14B'},
+  { vramMB:12288,  model:'deepseek-r1:14b',         sizeGB:8.4,  label:'推理进阶·14B'},
+  { vramMB:12288,  model:'phi-4:14b',               sizeGB:8.4,  label:'微软旗舰·14B'},
+  { vramMB:12288,  model:'mistral-small:22b',       sizeGB:13,   label:'欧主力·22B'},
+  { vramMB:12288,  model:'mistral-small:24b',       sizeGB:14,   label:'欧主力·24B'},
+  { vramMB:12288,  model:'qwen2.5:14b',             sizeGB:8.4,  label:'中文强力·14B'},
+  { vramMB:12288,  model:'llama3.2:11b',            sizeGB:6.6,  label:'Meta视觉·11B'},
+  // ⬛ 超重量 16-24GB
+  { vramMB:16384,  model:'gpt-oss:20b',             sizeGB:14,   label:'OpenAI开源·20B'},
+  { vramMB:16384,  model:'deepseek-r1:32b',         sizeGB:19,   label:'🔥旗舰推理·32B'},
+  { vramMB:16384,  model:'qwen3:32b',               sizeGB:19,   label:'🔥中文旗舰·32B'},
+  { vramMB:16384,  model:'qwen2.5:32b',             sizeGB:19,   label:'中文旗舰·32B'},
+  { vramMB:16384,  model:'qwq:32b',                 sizeGB:19,   label:'Qwen思考·32B'},
+  { vramMB:16384,  model:'gemma3:27b',              sizeGB:16,   label:'Google全能·27B'},
+  { vramMB:16384,  model:'deepseek-coder-v2:16b',   sizeGB:9.6,  label:'DS编程·16B'},
+  { vramMB:24576,  model:'deepseek-r1:70b',         sizeGB:42,   label:'终极推理·70B'},
+  { vramMB:24576,  model:'llama3.3:70b',            sizeGB:42,   label:'Meta超大杯·70B'},
+  { vramMB:24576,  model:'qwen2.5:72b',             sizeGB:43,   label:'中文巨无霸·72B'},
+  { vramMB:24576,  model:'command-r-plus:104b',     sizeGB:62,   label:'Cohere·104B'},
+  // ⬛ 巨无霸 24GB+
+  { vramMB:32768,  model:'mixtral:8x7b',            sizeGB:33,   label:'MistralMoE·56B'},
+  { vramMB:32768,  model:'mixtral:8x22b',           sizeGB:105,  label:'MistralMoE·176B'},
+  { vramMB:32768,  model:'llama3.1:405b',           sizeGB:243,  label:'Meta巅峰·405B'},
+  { vramMB:32768,  model:'nemotron:70b',            sizeGB:42,   label:'NVIDIA·70B'},
+  { vramMB:49152,  model:'deepseek-v3:671b',        sizeGB:403,  label:'世界之巅·671B'},
+  // ⬛ 嵌入模型
+  { vramMB: 2048,  model:'nomic-embed-text',         sizeGB:0.3,  label:'嵌入向量·文本'},
+  { vramMB: 2048,  model:'mxbai-embed-large',        sizeGB:0.7,  label:'嵌入向量·大型'},
+];
+
+export function getModelRecommendations(vramMB) {
+  return LOCAL_MODEL_RECOMMENDATIONS
+    .map(r => ({
+      ...r,
+      compatible: vramMB >= r.vramMB,
+      tier: vramMB >= r.vramMB * 1.5 ? 'best' : vramMB >= r.vramMB ? 'ok' : 'no'
+    }))
+    .sort((a, b) => (a.compatible === b.compatible) ? a.sizeGB - b.sizeGB : (a.compatible ? -1 : 1));
+}
+
+export function getOllamaAutoConfig(modelName) {
+  const modelId = 'ollama-' + modelName.replace(/[:.]/g, '-');
+  return {
+    supplier: 'ollama',
+    name: 'Ollama: ' + modelName,
+    endpoint: 'http://localhost:11434/v1/chat/completions',
+    protocol: 'openai',
+    modelName: modelName,
+    defaultMaxTokens: 8192,
+    contextWindow: 32768,
+    description: '🏠 本地模型 ' + modelName + '（一键部署）',
+  };
+}
 
 // ─── 模型管理 ─────────────────────────────────────────────
 

@@ -33,6 +33,11 @@ xcopy /E /Y /Q "dist\*" "%TARGET%\resources\app\dist\"
 if exist "%TARGET%\dist\*" del /Q /S "%TARGET%\dist\*"
 xcopy /E /Y /Q "dist\*" "%TARGET%\dist\"
 
+:: 同步依赖（新装包自动复制到运行版）
+if exist "%TARGET%\resources\app\node_modules\" (
+  xcopy /E /Y /Q /D "node_modules\systeminformation\*" "%TARGET%\resources\app\node_modules\systeminformation\"
+)
+
 :: 后端 electron 文件
 copy /Y "electron\main.js" "%TARGET%\resources\app\electron\main.js"
 copy /Y "electron\preload.js" "%TARGET%\resources\app\electron\preload.js"

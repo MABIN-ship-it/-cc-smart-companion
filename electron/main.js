@@ -5,6 +5,7 @@ const os = require('os');
 const { exec, execFile, execSync, spawn } = require('child_process');
 const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
+const si = require('systeminformation');
 let autoUpdater;
 try {
   autoUpdater = require('electron-updater').autoUpdater;
@@ -257,7 +258,155 @@ ipcMain.handle('ollama:list', async () => {
   }
 });
 
-// 全屏控制（开场动画用）
+// ── 一键部署本地模型 ──
+
+// 1. 硬件检测（多重方法，解决 Intel Arc 显卡 VRAM 不准的 bug）
+ipcMain.handle('hardware:detect', async () => {
+  const [graphics, cpu, mem] = await Promise.all([si.graphics(), si.cpu(), si.mem()]);
+
+  // 方法A：systeminformation
+  let vramMB = 0;
+  for (const c of (graphics.controllers || [])) {
+    const v = Math.round((c.vram || 0) / (1024*1024));
+    if (v > vramMB) vramMB = v;
+  }
+
+  // 方法B：WMIC Win32_VideoController（Intel Arc 可能报不准，但作参考）
+  try {
+    const { execSync } = require('child_process');
+    const wmicOut = execSync('wmic path win32_VideoController get AdapterRAM /format:csv', {encoding:'utf-8',timeout:5000});
+    for (const line of wmicOut.split('\n')) {
+      const m = line.match(/(\d{7,})/);
+      if (m) { const mb = Math.round(parseInt(m[1])/(1024*1024)); if (mb > vramMB) vramMB = mb; }
+    }
+  } catch {}
+
+  // 方法C：解析 GPU 名字中的显存（如 "Intel Arc 130T GPU (16GB)"）
+  for (const c of (graphics.controllers || [])) {
+    const m = (c.model||'').match(/\((\d+)GB\)/i);
+    if (m) { const mb = parseInt(m[1])*1024; if (mb > vramMB) vramMB = mb; }
+  }
+
+  // 取 VRAM 最大的 GPU 名
+  let gpuName = (graphics.controllers||[])[0]?.model || 'Unknown';
+  let bestV = 0;
+  for (const c of (graphics.controllers||[])) {
+    let v = Math.round((c.vram||0)/(1024*1024));
+    const nm = (c.model||'').match(/\((\d+)GB\)/i);
+    if (nm) v = Math.max(v, parseInt(nm[1])*1024);
+    if (v > bestV) { bestV = v; gpuName = c.model; }
+  }
+
+  return {
+    gpu: gpuName || 'Unknown',
+    vramMB: vramMB,
+    cpu: cpu.brand || `${cpu.manufacturer} ${cpu.model}`,
+    ramGB: Math.round((mem.total || 0) / (1024 * 1024 * 1024))
+  };
+});
+
+// 2. Ollama 检测+安装
+ipcMain.handle('ollama:ensure', async () => {
+  try {
+    const res = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
+    return { installed: true, models: (await res.json()).models || [] };
+  } catch {}
+
+  const { response } = await dialog.showMessageBox({
+    type: 'question', title: '需要安装 Ollama',
+    message: '本地模型需要 Ollama（约250MB）。是否自动下载并安装？\n\n将安装到当前用户目录，不需要管理员权限。',
+    buttons: ['自动安装', '取消'], cancelId: 1
+  });
+  if (response !== 0) return { installed: false, cancelled: true };
+
+  const dlPath = path.join(os.tmpdir(), 'OllamaSetup.exe');
+  await new Promise((resolve, reject) => {
+    const https = require('https');
+    https.get('https://dl.miniaimarket.cn/download/OllamaSetup.exe', (res2) => {
+      const f = fs.createWriteStream(dlPath);
+      res2.pipe(f); f.on('finish', resolve); f.on('error', reject);
+    }).on('error', reject);
+  });
+
+  await new Promise((resolve) => {
+    execFile(dlPath, ['/S', '/CURRENTUSER'], (err) => resolve());
+  });
+  try { fs.unlinkSync(dlPath); } catch {}
+
+  for (let i=0; i<30; i++) {
+    try { await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) }); return { installed: true }; }
+    catch { await new Promise(r => setTimeout(r, 1000)); }
+  }
+  return { installed: false, error: 'Ollama failed to start. Install manually: https://ollama.com' };
+});
+
+// 3. 磁盘空间检查
+ipcMain.handle('disk:check', async (_event, modelSizeGB) => {
+  const modelsDir = process.env.OLLAMA_MODELS || path.join(os.homedir(), '.ollama', 'models');
+  const root = path.parse(modelsDir).root;
+  const drives = await si.fsSize();
+  const d = drives.find(x => x.mount === root) || { available: 0 };
+  const freeGB = (d.available || 0) / (1024 ** 3);
+  return { ok: freeGB >= modelSizeGB * 2, freeGB, needGB: modelSizeGB * 2 };
+});
+
+// 4. 下载模型（带进度）
+const _activeDownloads = new Map();
+ipcMain.handle('model:download', async (event, modelName) => {
+  const existing = (() => {
+    try {
+      const out = execSync('ollama list', {encoding:'utf-8',timeout:5000});
+      return out.split('\n').filter(l => l.match(/^[a-zA-Z0-9_.-]+:/)).map(l => l.trim().split(/\s+/)[0]);
+    } catch { return []; }
+  })();
+  if (existing.some(m => m === modelName)) return { status: 'already' };
+  if (_activeDownloads.has(modelName)) return { status: 'downloading' };
+
+  const env = { ...process.env, OLLAMA_HOST: 'https://ollama.modelscope.cn', OLLAMA_HTTP2: 'true' };
+  const proc = spawn('ollama', ['pull', modelName], { env });
+  _activeDownloads.set(modelName, proc);
+
+  proc.stderr.on('data', (chunk) => {
+    for (const line of chunk.toString().split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const j = JSON.parse(line);
+        if (j.completed && j.total) {
+          event.sender.send('model:download:progress', {
+            model: modelName, percent: Math.round(j.completed/j.total*100),
+            completed: j.completed, total: j.total
+          });
+        }
+      } catch {}
+    }
+  });
+
+  return new Promise((resolve) => {
+    proc.on('close', async (code) => {
+      _activeDownloads.delete(modelName);
+      if (code === 0) {
+        event.sender.send('model:download:done', { model: modelName });
+        resolve({ status: 'done', model: modelName });
+      } else {
+        event.sender.send('model:download:error', { model: modelName, code });
+        resolve({ status: 'error', code });
+      }
+    });
+  });
+});
+
+// 5. Ollama 进程重启
+ipcMain.handle('ollama:restart', async () => {
+  try { execSync('taskkill /f /im ollama.exe 2>nul'); } catch {}
+  spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' }).unref();
+  for (let i=0; i<20; i++) {
+    try { await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) }); return { ok: true }; }
+    catch { await new Promise(r => setTimeout(r, 1000)); }
+  }
+  return { ok: false, error: 'Ollama service failed to start' };
+});
+
+// 全屏控制
 ipcMain.handle('window:setFullScreen', async (_event, fullscreen) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setFullScreen(fullscreen);

@@ -116,4 +116,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   gitStatus: (cwd) => ipcRenderer.invoke('git:status', cwd),
   gitBranch: (cwd) => ipcRenderer.invoke('git:branch', cwd),
   listProjectFiles: (dirPath) => ipcRenderer.invoke('project:listFiles', dirPath),
+
+  // 一键部署本地模型
+  hardwareDetect: () => ipcRenderer.invoke('hardware:detect'),
+  ollamaEnsure: () => ipcRenderer.invoke('ollama:ensure'),
+  diskCheck: (modelSizeGB) => ipcRenderer.invoke('disk:check', modelSizeGB),
+  modelDownload: (modelName) => ipcRenderer.invoke('model:download', modelName),
+  ollamaRestart: () => ipcRenderer.invoke('ollama:restart'),
+  onModelProgress: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('model:download:progress', handler);
+    return () => ipcRenderer.removeListener('model:download:progress', handler);
+  },
+  onModelDone: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('model:download:done', handler);
+    return () => ipcRenderer.removeListener('model:download:done', handler);
+  },
+  onModelError: (callback) => {
+    const handler = (_event, data) => callback(data);
+    ipcRenderer.on('model:download:error', handler);
+    return () => ipcRenderer.removeListener('model:download:error', handler);
+  },
 });
