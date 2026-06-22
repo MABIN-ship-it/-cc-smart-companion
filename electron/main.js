@@ -2,11 +2,29 @@ const { app, BrowserWindow, ipcMain, shell, Menu, dialog, session } = require('e
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { exec, execFile, execSync, spawn } = require('child_process');
+const { exec, execFile, execSync, execFileSync, spawn } = require('child_process');
 const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
 const si = require('systeminformation');
 let autoUpdater;
+
+// ── 查找 ollama.exe（处理用户自装/CC安装/自定义路径）──
+let _ollamaExe = null;
+function getOllamaExe() {
+  if (_ollamaExe) return _ollamaExe;
+  const dirs = [
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Ollama'),
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Ollama'),
+    'D:\\Ollama', 'E:\\Ollama',
+  ];
+  // 先查已安装目录
+  for (const d of dirs) {
+    const p = path.join(d, 'ollama.exe');
+    if (fs.existsSync(p)) { _ollamaExe = p; return p; }
+  }
+  // 再试 PATH
+  return 'ollama';
+}
 try {
   autoUpdater = require('electron-updater').autoUpdater;
 } catch (e) {
@@ -221,7 +239,7 @@ ipcMain.handle('ollama:list', async () => {
   // ── 方式1：Ollama CLI（端口 11434）──
   try {
     const { execSync } = require('child_process');
-    const output = execSync('ollama list', { timeout: 10000, encoding: 'buffer' });
+    const output = execFileSync(getOllamaExe(), ['list'], { timeout: 10000, encoding: 'buffer' });
     let decoded = output.toString('utf-8');
     if (!decoded.includes('NAME')) {
       try { decoded = new TextDecoder('gbk').decode(output); } catch {}
@@ -426,31 +444,39 @@ const _activeDownloads = new Map();
 ipcMain.handle('model:download', async (event, modelName) => {
   const existing = (() => {
     try {
-      const out = execSync('ollama list', {encoding:'utf-8',timeout:5000});
+      const out = execFileSync(getOllamaExe(), ['list'], {encoding:'utf-8',timeout:5000});
       return out.split('\n').filter(l => l.match(/^[a-zA-Z0-9_.-]+:/)).map(l => l.trim().split(/\s+/)[0]);
     } catch { return []; }
   })();
   if (existing.some(m => m === modelName)) return { status: 'already' };
   if (_activeDownloads.has(modelName)) return { status: 'downloading', hint: '该模型正在下载中，请勿重复点击' };
 
-  const env = { ...process.env, OLLAMA_HOST: 'https://ollama.modelscope.cn', OLLAMA_HTTP2: 'true' };
-  const proc = spawn('ollama', ['pull', modelName], { env });
+  const env = { ...process.env };
+  const proc = spawn(getOllamaExe(), ['pull', modelName], { env });
   _activeDownloads.set(modelName, proc);
 
-  proc.stderr.on('data', (chunk) => {
+  const onProgress = (chunk) => {
     for (const line of chunk.toString().split('\n')) {
-      if (!line.trim()) continue;
+      const t = line.trim(); if (!t) continue;
       try {
-        const j = JSON.parse(line);
-        if (j.completed && j.total) {
-          event.sender.send('model:download:progress', {
-            model: modelName, percent: Math.round(j.completed/j.total*100),
-            completed: j.completed, total: j.total
-          });
+        const j = JSON.parse(t);
+        if (j.completed != null && j.total != null) {
+          event.sender.send('model:download:progress', {model: modelName, percent: Math.round(j.completed/j.total*100), completed: j.completed, total: j.total});
+          continue;
         }
       } catch {}
+      // fallback: parse terminal progress "pulling xxx: 31% ▕...▏ 1.6 GB/5.2 GB"
+      const m = t.match(/pulling\s+\w+:\s+(\d+)%\s+.*?([\d.]+)\s*(GB|MB|KB|B)\s*\/\s*([\d.]+)\s*(GB|MB|KB|B)/i);
+      if (m) {
+        const units = {B:1,KB:1024,MB:1048576,GB:1073741824};
+        const comp = parseFloat(m[2]) * (units[m[3]]||1);
+        const total = parseFloat(m[4]) * (units[m[5]]||1);
+        event.sender.send('model:download:progress', {model: modelName, percent: parseInt(m[1]), completed: comp, total: total});
+      }
     }
-  });
+  };
+  proc.stdout.on('data', onProgress);
+  proc.stderr.on('data', onProgress);
 
   return new Promise((resolve) => {
     proc.on('close', async (code) => {
@@ -469,7 +495,7 @@ ipcMain.handle('model:download', async (event, modelName) => {
 // 5. Ollama 进程重启
 ipcMain.handle('ollama:restart', async () => {
   try { execSync('taskkill /f /im ollama.exe 2>nul'); } catch {}
-  spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' }).unref();
+  spawn(getOllamaExe(), ['serve'], { detached: true, stdio: 'ignore' }).unref();
   for (let i=0; i<20; i++) {
     try { await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) }); return { ok: true }; }
     catch { await new Promise(r => setTimeout(r, 1000)); }
