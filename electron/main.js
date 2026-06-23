@@ -247,7 +247,7 @@ ipcMain.handle('ollama:list', async () => {
     const lines = decoded.trim().split('\n');
     for (let i = 1; i < lines.length; i++) {
       const name = lines[i].trim().split(/\s+/)[0];
-      if (name && name.indexOf('/') === -1) {
+      if (name && name.indexOf('/') === -1 && !name.endsWith('-ctx')) {
         models.push({ name, label: name.split(':')[0] + ' (' + name.split(':')[1] + ')', source: 'ollama' });
       }
     }
