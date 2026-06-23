@@ -505,6 +505,12 @@ ipcMain.handle('localModel:fetch', async (_event, url, body) => {
   });
 });
 
+// 5b. 删除本地模型
+ipcMain.handle('ollama:rm', async (_event, modelName) => {
+  try { execSync(`"${getOllamaExe()}" rm ${modelName}`, {timeout:10000}); return {ok:true}; }
+  catch(e) { return {ok:false, error: e.message}; }
+});
+
 // 6. Ollama 进程重启
 ipcMain.handle('ollama:restart', async () => {
   try { execSync('taskkill /f /im ollama.exe 2>nul'); } catch {}

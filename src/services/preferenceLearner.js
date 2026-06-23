@@ -1,10 +1,9 @@
-/**
+﻿/**
  * 偏好学习引擎 — CC 越用越聪明
  *
  * 监控用户反馈（点赞/点踩/修改），分析编辑差异，
  * 更新每种任务类型的信任分数，生成个性化提示词片段。
  */
-import { getProfile, updateProfile } from './userProfile';
 import { addLesson } from './lessonsLearned';
 
 const PREF_KEY = 'cc_task_preferences';
