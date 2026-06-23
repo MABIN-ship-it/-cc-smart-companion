@@ -1646,7 +1646,8 @@ export default function ChatInterface() {
                               localStorage.setItem('cc_custom_models', JSON.stringify(cm));
                               setApiInputRefresh(Date.now());
                               setApiInputRefresh(Date.now()); // 立即刷新列表
-                              showToast(`已扫描到 ${result.models.length} 个本地模型`);
+                              // 改用 alert 替代 showToast（函数未定义）
+                              alert(`已扫描到 ${result.models.length} 个本地模型`);
                             } else if (result.success) {
                               alert('未检测到本地模型。请先通过 Ollama 或 Cookbook 下载模型，再点扫描。');
                             } else {
