@@ -193,8 +193,7 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, 
         if (textContent) blocks.push({ type: 'text', text: textContent });
         messages.push({ role: 'user', content: blocks });
       } else {
-        // 保留 content 格式：若是数组则原样传（含 thinking/tool_use blocks）
-        messages.push({ role: m.role, content: m.content });
+        messages.push({ role: m.role, content: Array.isArray(m.content) ? '' : (m.content || '') });
       }
     }
   }
@@ -253,6 +252,7 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, 
 
   // 使用流式请求，逐字返回
   let fullText = '';
+  let fullThinking = '';
   try {
     for await (const frame of sendModelRequestStream({
       model,
@@ -264,10 +264,18 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, 
       signal: fetchSignal,
     })) {
       if (frame.type === 'text') {
-        fullText = frame.accumulated;
+        fullText += frame.token || frame.text || '';
         onProgress?.({ type: 'text', data: fullText });
       } else if (frame.type === 'think') {
-        onProgress?.({ type: 'think', data: frame.accumulated });
+        if (frame.token) {
+          fullThinking += frame.token;
+          onProgress?.({ type: 'think', data: fullThinking });
+        } else if (frame.accumulated) {
+          fullThinking = frame.accumulated;
+          onProgress?.({ type: 'think', data: fullThinking });
+        }
+      } else if (frame.type === 'think_end') {
+        // 推理结束
       } else if (frame.type === 'error') {
         throw new Error(frame.error);
       } else if (frame.type === 'done') {

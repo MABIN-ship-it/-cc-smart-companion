@@ -325,8 +325,6 @@ const MODEL_REGISTRY = {
   },
 };
 
-const _localCtxReady = {};
-
 // ─── 本地模型推荐表（一键部署用）────────────────────────────────
 export const LOCAL_MODEL_RECOMMENDATIONS = [
   // ⬛ 代码类
@@ -817,17 +815,32 @@ function parseOpenAIResponse(data) {
 // ─── 对外接口 ─────────────────────────────────────────────
 
 export async function sendModelRequest({ model, messages, systemPrompt, tools, maxTokens, temperature, signal }) {
-  const modelCfg = getModelConfig(model);
+  let modelCfg = getModelConfig(model);
   const apiKey = getApiKey(model);
   const isLocalModel = SUPPLIER_REGISTRY[modelCfg.supplier]?.isLocal;
-  // 本地模型自动使用大上下文版本（-ctx 后缀）
   if (!apiKey && !isLocalModel) {
     throw new Error(`未设置 ${modelCfg.name} 的API Key`);
   }
 
-  if (isLocalModel && modelCfg.modelName && !modelCfg.modelName.endsWith('-ctx')) {
-    modelCfg = {...modelCfg, modelName: modelCfg.modelName + '-ctx'};
+  // 本地模型非流式请求也走 /api/chat
+  if (isLocalModel) {
+    const nativeBody = {
+      model: modelCfg.modelName,
+      messages: messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '' })),
+      stream: false,
+      keep_alive: -1
+    };
+    if (systemPrompt) nativeBody.messages.unshift({ role: 'system', content: systemPrompt.slice(0, 200) });
+    const url = modelCfg.endpoint.replace('/v1/chat/completions', '/api/chat');
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(nativeBody), signal });
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '');
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return { text: data?.message?.content || '', _httpStatus: res.status };
   }
+
   let request;
   if (modelCfg.protocol === 'anthropic') {
     request = toAnthropicFormat({ model, modelCfg, messages, systemPrompt, tools, maxTokens, temperature });
@@ -836,13 +849,7 @@ export async function sendModelRequest({ model, messages, systemPrompt, tools, m
   }
 
   // 本地模型走主进程代理（同 curl，零多余头）
-  let res;
-  if (isLocalModel && window.electronAPI?.localModelFetch) {
-    const r = await window.electronAPI.localModelFetch(request.url, JSON.stringify(request.body));
-    res = { ok: r.status >= 200 && r.status < 400, status: r.status, json: async () => JSON.parse(r.body), text: async () => r.body };
-  } else {
-    res = await fetch(request.url, { method:'POST', headers:request.headers, body:JSON.stringify(request.body), signal });
-  }
+  const res = await fetch(request.url, { method:'POST', headers:request.headers, body:JSON.stringify(request.body), signal });
 
   const data = await res.json();
 
@@ -860,7 +867,7 @@ export async function sendModelRequest({ model, messages, systemPrompt, tools, m
 // ─── 流式请求 ─────────────────────────────────────────────
 
 export async function* sendModelRequestStream({ model, messages, systemPrompt, tools, maxTokens, temperature, signal }) {
-  const modelCfg = getModelConfig(model);
+  let modelCfg = getModelConfig(model);
   const apiKey = getApiKey(model);
   const isLocalModel2 = SUPPLIER_REGISTRY[modelCfg.supplier]?.isLocal;
 
@@ -869,10 +876,66 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
     return;
   }
 
-  if (isLocalModel2 && modelCfg.modelName && !modelCfg.modelName.endsWith('-ctx')) {
-    modelCfg = {...modelCfg, modelName: modelCfg.modelName + '-ctx'};
+
+  // ── 本地模型走 Ollama 原生 /api/chat 流式，绕过 v1 翻译层 ──
+  if (isLocalModel2) {
+    // 本地模型极简系统提示词：截断到 200 字符，避免首 token 延迟
+    const localSystemPrompt = systemPrompt ? systemPrompt.slice(0, 200) : '';
+    const nativeBody = {
+      model: modelCfg.modelName,
+      messages: messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : (Array.isArray(m.content) ? (m.content.map(b => b.text || b.type || '').join(' ')) : (m.content || '')) })),
+      stream: true,
+      keep_alive: -1
+    };
+    if (localSystemPrompt) nativeBody.messages.unshift({ role: 'system', content: localSystemPrompt });
+
+    // 本地模型：仅保留最近 12 条消息避免上下文爆炸导致 token/s 暴跌
+    if (nativeBody.messages.length > 13) {
+      const sys = nativeBody.messages[0]?.role === 'system' ? [nativeBody.messages[0]] : [];
+      nativeBody.messages = [...sys, ...nativeBody.messages.slice(-12)];
+    }
+
+    const url = modelCfg.endpoint.replace('/v1/chat/completions', '/api/chat');
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(nativeBody), signal });
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => '未知错误');
+      yield { type: 'error', error: `HTTP ${res.status}: ${errorText}` };
+      return;
+    }
+
+    // NDJSON 流式解析——每行一个 JSON chunk；只 yield 增量 token
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let thinkingActive = false;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (signal?.aborted) { reader.cancel(); break; }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const chunk = JSON.parse(line);
+          const msg = chunk?.message || {};
+          const token = msg.content || '';
+          const thinkToken = msg.reasoning_content || '';
+          if (thinkToken) { thinkingActive = true; yield { type: 'think', token: thinkToken }; }
+          if (token) {
+            if (thinkingActive) { yield { type: 'think_end' }; thinkingActive = false; }
+            yield { type: 'text', token };
+          }
+          if (chunk.done) { yield { type: 'done', text: msg.content || '' }; return; }
+        } catch { /* NDJSON 行截断或异常 JSON，跳过 */ }
+      }
+    }
+    yield { type: 'done', text: '' };
+    return;
   }
 
+  // ── 非本地模型：原有流式逻辑 ──
   let request;
   if (modelCfg.protocol === 'anthropic') {
     request = toAnthropicFormat({ model, modelCfg, messages, systemPrompt, tools, maxTokens, temperature });
@@ -883,14 +946,22 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
   }
 
   const res = await fetch(request.url, { method:'POST', headers:request.headers, body:JSON.stringify(request.body), signal });
-
   if (!res.ok) {
     const errorText = await res.text().catch(() => '未知错误');
     yield { type: 'error', error: `HTTP ${res.status}: ${errorText}` };
     return;
   }
-
+  // 本地非流式：全文直接解析（必须在 reader 声明前 return）
+  if (isLocalModel2) {
+    const data = await res.json();
+    const r = parseOpenAIResponse(data);
+    if (r.error) { yield { type: 'error', error: r.error }; return; }
+    yield { type: 'text', text: r.text, thinking: r.thinking };
+    yield { type: 'done' };
+    return;
+  }
   const reader = res.body.getReader();
+
   const { parseAnthropicStream, parseOpenAIStream } = await import('../utils/streamParser');
 
   const parser = modelCfg.protocol === 'anthropic'

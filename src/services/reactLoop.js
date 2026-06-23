@@ -45,11 +45,18 @@ async function streamingRequest({ model, messages, systemPrompt, tools, onProgre
       signal,
     })) {
       if (frame.type === 'text') {
-        fullText = frame.accumulated;
+        fullText += frame.token || frame.text || '';
         onProgress?.({ type: 'text', data: fullText });
       } else if (frame.type === 'think') {
-        fullThinking = frame.accumulated;
-        onProgress?.({ type: 'think', data: fullThinking });
+        if (frame.token) {
+          fullThinking += frame.token;
+          onProgress?.({ type: 'think', data: fullThinking });
+        } else if (frame.accumulated) {
+          fullThinking = frame.accumulated;
+          onProgress?.({ type: 'think', data: fullThinking });
+        }
+      } else if (frame.type === 'think_end') {
+        // 推理结束，保持已累积的思考文本
       } else if (frame.type === 'tool_use') {
         toolUses.push(frame.toolUse);
         // 流式工具执行：不等模型说完，工具已就绪就开跑

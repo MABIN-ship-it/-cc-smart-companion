@@ -57,6 +57,58 @@ function CollapsedThinking({ text, expanded: controlledExpanded, onToggle }) {
   );
 }
 
+/** 流式输出：rAF 节流 + 增量追加 DOM，避免每个 token 触发完整 Markdown 重渲染 */
+function StreamingBubble({ streamingText, thinking, thinkingText, thinkCollapsed, setThinkCollapsed }) {
+  const contentRef = useRef(null);
+  const lastRenderLenRef = useRef(0);
+  const rafPending = useRef(false);
+
+  useEffect(() => {
+    if (!streamingText) { lastRenderLenRef.current = 0; return; }
+    if (rafPending.current) return;
+    rafPending.current = true;
+    requestAnimationFrame(() => {
+      rafPending.current = false;
+      const el = contentRef.current;
+      if (!el) return;
+      const prevLen = lastRenderLenRef.current;
+      if (streamingText.length <= prevLen) {
+        el.innerHTML = renderMarkdown(streamingText);
+      } else {
+        const delta = streamingText.slice(prevLen);
+        el.insertAdjacentHTML('beforeend', renderMarkdown(delta));
+      }
+      lastRenderLenRef.current = streamingText.length;
+    });
+  }, [streamingText]);
+
+  if (!thinking && !streamingText) return null;
+
+  return (
+    <div className="chat-bubble streaming">
+      <div className="chat-bubble-body">
+        {thinking && !thinkCollapsed && (
+          <CollapsedThinking text={thinkingText || '思考中...'} expanded={true} onToggle={(v) => setThinkCollapsed(!v)} />
+        )}
+        {thinking && thinkCollapsed && (
+          <div className="thinking-collapsed">
+            <div className="thinking-toggle" onClick={() => setThinkCollapsed(false)}>
+              <span className="thinking-toggle-arrow">▶</span>
+              <span>思考过程</span>
+            </div>
+          </div>
+        )}
+        {streamingText && (
+          <>
+            <div className="chat-bubble-text" ref={contentRef} />
+            <span className="cursor-blink">|</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- SVG Icons ---------- */
 const icons = {
   refresh: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>,
@@ -272,32 +324,13 @@ export default function ChatBubbleLayer({
         ))}
 
         {/* ── 流式输出（思考+正文在同一气泡内）────── */}
-        {(thinking || streamingText) && (
-          <div className="chat-bubble streaming">
-            <div className="chat-bubble-body">
-              {thinking && !thinkCollapsed && (
-                <CollapsedThinking text={thinkingText || '思考中...'} expanded={true} onToggle={(v) => setThinkCollapsed(!v)} />
-              )}
-              {thinking && thinkCollapsed && (
-                <div className="thinking-collapsed">
-                  <div className="thinking-toggle" onClick={() => setThinkCollapsed(false)}>
-                    <span className="thinking-toggle-arrow">▶</span>
-                    <span>思考过程</span>
-                  </div>
-                </div>
-              )}
-              {streamingText && (
-                <>
-                  <div
-                    className="chat-bubble-text"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(streamingText) }}
-                  />
-                  <span className="cursor-blink">|</span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
+        <StreamingBubble
+          streamingText={streamingText}
+          thinking={thinking}
+          thinkingText={thinkingText}
+          thinkCollapsed={thinkCollapsed}
+          setThinkCollapsed={setThinkCollapsed}
+        />
       </div>
     </div>
   );

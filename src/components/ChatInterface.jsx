@@ -497,7 +497,7 @@ export default function ChatInterface() {
   useEffect(() => {
     if (selectedSupplier === 'ollama' && window.electronAPI?.ollamaList) {
       window.electronAPI.ollamaList().then(r => {
-        if (r.success) setDeployInstalledModels(r.models);
+        if (r.success) setDeployInstalledModels(r.models.filter(m => !m.name.endsWith('-ctx')));
       }).catch(() => {});
     }
   }, [selectedSupplier, apiInputRefresh]);
@@ -628,6 +628,8 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
+      } else if (type === 'think_end') {
+        setThinking(false);
       }
     };
 
@@ -1000,6 +1002,8 @@ export default function ChatInterface() {
         setThinking(true);
         thinkingTextRef.current = data;
         setThinkingText(data);
+      } else if (type === 'think_end') {
+        setThinking(false);
       }
     };
 
@@ -1840,7 +1844,17 @@ export default function ChatInterface() {
                                   setApiInputRefresh(Date.now());
                                 }}
                               >
-                                <span className="model-chip-name">{m.name}{isActive ? ' ✅' : ''}</span>
+                                <span className="model-chip-name" style={{flex:1}}>{m.name}{isActive ? ' ✅' : ''}</span>
+                                <span style={{cursor:'pointer', marginLeft:6, opacity:0.5, fontSize:14}} title="删除模型（含文件）"
+                                  onClick={e => {
+                                    e.stopPropagation();
+                                    const gb = (m.name.match(/[\d.]+GB/)||[''])[0] || '未知大小';
+                                    if (confirm(`确定删除 ${m.name} ？\n模型文件将从硬盘删除（${gb}），不可恢复。`)) {
+                                      window.electronAPI?.ollamaRm?.(m.name);
+                                      setDeployInstalledModels(deployInstalledModels.filter(x => x.name !== m.name));
+                                    }
+                                  }}
+                                >🗑️</span>
                               </div>
                             );
                           })}

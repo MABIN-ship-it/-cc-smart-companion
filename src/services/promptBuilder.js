@@ -472,6 +472,22 @@ export function buildSystemPrompt(state, userMessage, mode = 'chat') {
     }
   } catch {}
 
+  // 本地模型：极简提示词，避免首 token 延迟
+  try {
+    const currentModel = (typeof window !== 'undefined' && window.localStorage) ?
+      localStorage.getItem('cc_current_model') : null;
+    const cm = currentModel ? JSON.parse(localStorage.getItem('cc_custom_models') || '{}') : {};
+    const cfg = currentModel ? (MODEL_REGISTRY[currentModel] || cm[currentModel]) : null;
+    if (cfg?.supplier === 'ollama') {
+      const ts = Date.now();
+      const localDate = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+      return `你是CC智能伙伴。日期：${localDate}。
+- 回复简洁直接，第一句话就给答案。
+- 代码块用 markdown 格式。
+${state?.currentProject ? '- 工作目录：' + state.currentProject + '\n' : ''}${attachments}`;
+    }
+  } catch {}
+
   const sections = [
     buildIdentitySection(),
     buildEnvironmentSection(state),
