@@ -325,6 +325,8 @@ const MODEL_REGISTRY = {
   },
 };
 
+const _localCtxReady = {};
+
 // ─── 本地模型推荐表（一键部署用）────────────────────────────────
 export const LOCAL_MODEL_RECOMMENDATIONS = [
   // ⬛ 代码类
@@ -606,17 +608,13 @@ export function setCurrentModel(modelId) {
 
 /** 获取用户的API Key（同供应商共享） */
 export function getApiKey(modelId) {
-  const cfg = MODEL_REGISTRY[modelId];
-  if (!cfg) return null;
-  const supplierKeyName = cfg.supplier ? `cc_api_key_${cfg.supplier}` : null;
-  const modelKeyName = `cc_api_key_${modelId}`;
-  try {
-    return (supplierKeyName && localStorage.getItem(supplierKeyName))
-      || localStorage.getItem(modelKeyName)
-      || null;
-  } catch {
-    return null;
+  let supplier = (MODEL_REGISTRY[modelId] || {}).supplier;
+  if (!supplier) {
+    try { const cm = JSON.parse(localStorage.getItem('cc_custom_models')||'{}'); if (cm[modelId]) supplier = cm[modelId].supplier; } catch {}
   }
+  if (supplier === 'ollama') return 'ollama';
+  if (!supplier) return null;
+  try { return localStorage.getItem(`cc_api_key_${supplier}`) || null; } catch { return null; }
 }
 
 /** 设置用户的API Key（按供应商存储，同厂商共享） */
@@ -741,16 +739,17 @@ function toOpenAIFormat({ model, modelCfg, messages, systemPrompt, tools, maxTok
     function: { name: t.name, description: t.description, parameters: t.input_schema },
   }));
 
+  const isLocal = SUPPLIER_REGISTRY[modelCfg.supplier]?.isLocal;
+  const headers = { 'Content-Type': 'application/json' };
+  if (!isLocal) headers['Authorization'] = `Bearer ${getApiKey(model)}`;
+
   return {
     url: modelCfg.endpoint,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getApiKey(model)}`,
-    },
+    headers,
     body: {
       model: modelCfg.modelName || model,
       max_tokens: maxTokens || modelCfg.defaultMaxTokens,
-      temperature: temperature ?? 0.7,
+      temperature: temperature ?? (isLocal ? undefined : 0.7),
       messages: openaiMessages,
       ...(openaiTools?.length ? { tools: openaiTools, tool_choice: 'auto' } : {}),
     },
@@ -821,10 +820,14 @@ export async function sendModelRequest({ model, messages, systemPrompt, tools, m
   const modelCfg = getModelConfig(model);
   const apiKey = getApiKey(model);
   const isLocalModel = SUPPLIER_REGISTRY[modelCfg.supplier]?.isLocal;
+  // 本地模型自动使用大上下文版本（-ctx 后缀）
   if (!apiKey && !isLocalModel) {
     throw new Error(`未设置 ${modelCfg.name} 的API Key`);
   }
 
+  if (isLocalModel && modelCfg.modelName && !modelCfg.modelName.endsWith('-ctx')) {
+    modelCfg = {...modelCfg, modelName: modelCfg.modelName + '-ctx'};
+  }
   let request;
   if (modelCfg.protocol === 'anthropic') {
     request = toAnthropicFormat({ model, modelCfg, messages, systemPrompt, tools, maxTokens, temperature });
@@ -832,12 +835,14 @@ export async function sendModelRequest({ model, messages, systemPrompt, tools, m
     request = toOpenAIFormat({ model, modelCfg, messages, systemPrompt, tools, maxTokens, temperature });
   }
 
-  const res = await fetch(request.url, {
-    method: 'POST',
-    headers: request.headers,
-    body: JSON.stringify(request.body),
-    signal,
-  });
+  // 本地模型走主进程代理（同 curl，零多余头）
+  let res;
+  if (isLocalModel && window.electronAPI?.localModelFetch) {
+    const r = await window.electronAPI.localModelFetch(request.url, JSON.stringify(request.body));
+    res = { ok: r.status >= 200 && r.status < 400, status: r.status, json: async () => JSON.parse(r.body), text: async () => r.body };
+  } else {
+    res = await fetch(request.url, { method:'POST', headers:request.headers, body:JSON.stringify(request.body), signal });
+  }
 
   const data = await res.json();
 
@@ -864,6 +869,10 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
     return;
   }
 
+  if (isLocalModel2 && modelCfg.modelName && !modelCfg.modelName.endsWith('-ctx')) {
+    modelCfg = {...modelCfg, modelName: modelCfg.modelName + '-ctx'};
+  }
+
   let request;
   if (modelCfg.protocol === 'anthropic') {
     request = toAnthropicFormat({ model, modelCfg, messages, systemPrompt, tools, maxTokens, temperature });
@@ -873,12 +882,7 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
     request.body.stream = true;
   }
 
-  const res = await fetch(request.url, {
-    method: 'POST',
-    headers: request.headers,
-    body: JSON.stringify(request.body),
-    signal,
-  });
+  const res = await fetch(request.url, { method:'POST', headers:request.headers, body:JSON.stringify(request.body), signal });
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => '未知错误');

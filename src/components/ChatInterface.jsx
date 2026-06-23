@@ -1825,7 +1825,7 @@ export default function ChatInterface() {
                                 style={{cursor:'pointer'}}
                                 onClick={() => {
                                   const cm = JSON.parse(localStorage.getItem('cc_custom_models') || '{}');
-                                  if (!cm[modelId]) {
+                                  // always overwrite
                                     const prefix = (m.source==='llamacpp')?'llamacpp':'ollama';
                                     cm[modelId] = {
                                       supplier:'ollama', name:prefix+': '+m.name,
@@ -1835,7 +1835,7 @@ export default function ChatInterface() {
                                     };
                                     localStorage.setItem('cc_custom_models', JSON.stringify(cm));
                                     setApiKey(modelId, 'ollama');
-                                  }
+                                  setCurrentModel(modelId);
                                   setSelectedModel(modelId);
                                   setApiInputRefresh(Date.now());
                                 }}

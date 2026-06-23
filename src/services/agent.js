@@ -246,7 +246,7 @@ async function simpleChat(userMessage, state, systemPrompt, onProgress, signal, 
     }
   }
 
-  const timeoutSignal = AbortSignal.timeout(60000);
+  const timeoutSignal = AbortSignal.timeout(120000);
   const fetchSignal = signal
     ? AbortSignal.any([signal, timeoutSignal])
     : timeoutSignal;

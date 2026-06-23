@@ -124,6 +124,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onOllamaInstallPhase: (cb) => { const h=(_,d)=>cb(d); ipcRenderer.on('ollama:install:phase',h); return ()=>ipcRenderer.removeListener('ollama:install:phase',h); },
   onOllamaInstallDone: (cb) => { const h=()=>cb(); ipcRenderer.on('ollama:install:done',h); return ()=>ipcRenderer.removeListener('ollama:install:done',h); },
   ollamaInstallCancel: () => ipcRenderer.send('ollama:install:cancel'),
+  localModelFetch: (url, body) => ipcRenderer.invoke('localModel:fetch', url, body),
   diskCheck: (modelSizeGB) => ipcRenderer.invoke('disk:check', modelSizeGB),
   modelDownload: (modelName) => ipcRenderer.invoke('model:download', modelName),
   ollamaRestart: () => ipcRenderer.invoke('ollama:restart'),

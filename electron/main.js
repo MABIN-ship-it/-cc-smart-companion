@@ -492,7 +492,20 @@ ipcMain.handle('model:download', async (event, modelName) => {
   });
 });
 
-// 5. Ollama 进程重启
+// 5. 本地模型 HTTP 代理（绕过浏览器 fetch 头）
+ipcMain.handle('localModel:fetch', async (_event, url, body) => {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const mod = u.protocol === 'https:' ? require('https') : require('http');
+    const req = mod.request(url, { method:'POST', headers:{'Content-Type':'application/json'} }, (res) => {
+      let data = ''; res.on('data', c => data += c);
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+    });
+    req.on('error', reject); req.write(body); req.end();
+  });
+});
+
+// 6. Ollama 进程重启
 ipcMain.handle('ollama:restart', async () => {
   try { execSync('taskkill /f /im ollama.exe 2>nul'); } catch {}
   spawn(getOllamaExe(), ['serve'], { detached: true, stdio: 'ignore' }).unref();
