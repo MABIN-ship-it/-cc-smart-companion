@@ -921,7 +921,8 @@ export async function* sendModelRequestStream({ model, messages, systemPrompt, t
           const chunk = JSON.parse(line);
           const msg = chunk?.message || {};
           const token = msg.content || '';
-          const thinkToken = msg.reasoning_content || '';
+          // Ollama 原生 /api/chat 用 'thinking' 字段，v1/chat/completions 用 'reasoning_content'
+          const thinkToken = msg.thinking || msg.reasoning_content || '';
           if (thinkToken) { thinkingActive = true; yield { type: 'think', token: thinkToken }; }
           if (token) {
             if (thinkingActive) { yield { type: 'think_end' }; thinkingActive = false; }
